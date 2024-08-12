@@ -7,12 +7,14 @@ on:
 jobs:
   build-and-release:
     runs-on: macos-latest
+    permissions:
+      contents: write
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Set up Swift
-      uses: swift-actions/setup-swift@v2
+      uses: swift-actions/setup-swift@v1
       with:
         swift-version: '5.10'
     
@@ -22,22 +24,9 @@ jobs:
         mv .build/release/Mac-Windows-Manager ./Mac-Windows-Manager
     
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: v${{ github.run_number }}
-        release_name: Release ${{ github.run_number }}
-        draft: false
-        prerelease: false
-    
-    - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./Mac-Windows-Manager
-        asset_name: Mac-Windows-Manager
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release create v${{ github.run_number }} ./Mac-Windows-Manager \
+          --title "Release ${{ github.run_number }}" \
+          --notes "Automated release for commit ${{ github.sha }}"
