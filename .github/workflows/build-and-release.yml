@@ -33,22 +33,52 @@ jobs:
         echo "Moving binary to current directory..."
         mv .build/release/mwm ./mwm
         
-        echo "Checking binary details before signing..."
-        file ./mwm
-        otool -L ./mwm
+        echo "Creating entitlements file..."
+        cat << EOF > entitlements.plist
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+          <true/>
+        </dict>
+        </plist>
+        EOF
         
         echo "Attempting to sign the binary..."
-        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" -v ./mwm
+        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" --options runtime --entitlements entitlements.plist -v ./mwm
         
         echo "Verifying code signature..."
         /usr/bin/codesign -dv --verbose=4 ./mwm
         
         echo "Checking Gatekeeper assessment..."
         spctl --assess -vv ./mwm
+
+    - name: Notarize
+      env:
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+      run: |
+        echo "Creating ZIP for notarization..."
+        ditto -c -k --keepParent ./mwm mwm.zip
         
-        echo "Displaying entitlements..."
-        codesign -d --entitlements :- ./mwm
-    
+        echo "Submitting for notarization..."
+        xcrun notarytool submit mwm.zip --wait --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$TEAM_ID" --output-format json > notarization_result.json
+        
+        echo "Notarization result:"
+        cat notarization_result.json
+        
+        if grep -q "success" notarization_result.json; then
+          echo "Notarization successful, stapling ticket..."
+          xcrun stapler staple ./mwm
+          echo "Verifying stapled binary..."
+          spctl --assess -vv ./mwm
+        else
+          echo "Notarization failed. Check the output above for details."
+          exit 1
+        fi
+
     - name: Check Notarization Status
       run: |
         echo "Checking notarization status..."
