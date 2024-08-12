@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "Mac-Windows-Manager",
+    name: "mwm",
     platforms: [
         .macOS(.v10_15)
     ],
     dependencies: [],
     targets: [
         .executableTarget(
-            name: "Mac-Windows-Manager",
+            name: "mwm",
             dependencies: [],
             path: "Sources"
         ),

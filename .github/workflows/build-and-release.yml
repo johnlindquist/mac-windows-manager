@@ -29,7 +29,7 @@ jobs:
     - name: Build and Sign
       run: |
         swift build -c release
-        mv .build/release/Mac-Windows-Manager ./mwm
+        mv .build/release/mwm ./mwm
         /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" ./mwm
     
     - name: Generate SHA256
