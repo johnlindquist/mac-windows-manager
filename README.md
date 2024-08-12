@@ -52,6 +52,10 @@ mac-windows-manager <command> [width-<size>] [height-<size>]
 4. Custom Sizing:
    - `center-<percentage>`: Center the window and resize it to the specified percentage of the screen size
 
+5. Display Movement Commands:
+   - `display-next`: Move the window to the next display, maintaining its relative position and size
+   - `display-previous`: Move the window to the previous display, maintaining its relative position and size
+
 ### Size Specifications
 
 You can specify custom sizes for width and height using the following format:
@@ -81,6 +85,16 @@ If no size is specified, the current window size is maintained.
 4. Center the window and set its size to 60% of the screen:
    ```
    mac-windows-manager center-60
+   ```
+
+5. Move the window to the next display:
+   ```
+   mac-windows-manager display-next
+   ```
+
+6. Move the window to the previous display:
+   ```
+   mac-windows-manager display-previous
    ```
 
 ### Help

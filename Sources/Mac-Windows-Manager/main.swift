@@ -125,55 +125,55 @@ func positionFrontmostWindow(position: WindowPosition, widthSpec: String? = nil,
         return
     }
     
-    let visibleFrame = targetScreen.visibleFrame
-    print("Screen visible frame: \(visibleFrame)")
+    let frame = targetScreen.frame // Use frame instead of visibleFrame to ignore the dock
+    print("Screen frame: \(frame)")
     
-    let newWidth = parseSize(spec: widthSpec, currentSize: currentSize.width, availableSize: visibleFrame.width)
-    let newHeight = parseSize(spec: heightSpec, currentSize: currentSize.height, availableSize: visibleFrame.height)
+    let newWidth = parseSize(spec: widthSpec, currentSize: currentSize.width, availableSize: frame.width)
+    let newHeight = parseSize(spec: heightSpec, currentSize: currentSize.height, availableSize: frame.height)
     print("Parsed new width: \(newWidth), Parsed new height: \(newHeight)")
     
     var newFrame: CGRect
     
     switch position {
     case .left:
-        newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: newWidth, height: newHeight)
+        newFrame = CGRect(x: frame.minX, y: frame.minY, width: newWidth, height: newHeight)
     case .right:
-        newFrame = CGRect(x: visibleFrame.maxX - newWidth, y: visibleFrame.minY, width: newWidth, height: newHeight)
+        newFrame = CGRect(x: frame.maxX - newWidth, y: frame.minY, width: newWidth, height: newHeight)
     case .topLeft:
-        newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.maxY - newHeight, width: newWidth, height: newHeight)
+        newFrame = CGRect(x: frame.minX, y: frame.maxY - newHeight, width: newWidth, height: newHeight)
     case .topRight:
-        newFrame = CGRect(x: visibleFrame.maxX - newWidth, y: visibleFrame.maxY - newHeight, width: newWidth, height: newHeight)
+        newFrame = CGRect(x: frame.maxX - newWidth, y: frame.maxY - newHeight, width: newWidth, height: newHeight)
     case .bottomLeft:
-        newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: newWidth, height: newHeight)
+        newFrame = CGRect(x: frame.minX, y: frame.minY, width: newWidth, height: newHeight)
     case .bottomRight:
-        newFrame = CGRect(x: visibleFrame.maxX - newWidth, y: visibleFrame.minY, width: newWidth, height: newHeight)
+        newFrame = CGRect(x: frame.maxX - newWidth, y: frame.minY, width: newWidth, height: newHeight)
     case .centerLeft:
-        newFrame = CGRect(x: visibleFrame.minX, 
-                          y: visibleFrame.midY - newHeight / 2, 
+        newFrame = CGRect(x: frame.minX, 
+                          y: frame.midY - newHeight / 2, 
                           width: newWidth, 
                           height: newHeight)
     case .centerTop:
-        newFrame = CGRect(x: visibleFrame.midX - newWidth / 2, 
-                          y: visibleFrame.maxY - newHeight, 
+        newFrame = CGRect(x: frame.midX - newWidth / 2, 
+                          y: frame.maxY - newHeight, 
                           width: newWidth, 
                           height: newHeight)
     case .centerRight:
-        newFrame = CGRect(x: visibleFrame.maxX - newWidth, 
-                          y: visibleFrame.midY - newHeight / 2, 
+        newFrame = CGRect(x: frame.maxX - newWidth, 
+                          y: frame.midY - newHeight / 2, 
                           width: newWidth, 
                           height: newHeight)
     case .centerBottom:
-        newFrame = CGRect(x: visibleFrame.midX - newWidth / 2, 
-                          y: visibleFrame.minY, 
+        newFrame = CGRect(x: frame.midX - newWidth / 2, 
+                          y: frame.minY, 
                           width: newWidth, 
                           height: newHeight)
     case .custom(let customPosition):
         if customPosition.starts(with: "center-") {
             if let percentage = parsePercentage(from: customPosition) {
-                let width = visibleFrame.width * CGFloat(percentage) / 100.0
-                let height = visibleFrame.height * CGFloat(percentage) / 100.0
-                let x = visibleFrame.minX + (visibleFrame.width - width) / 2
-                let y = visibleFrame.minY + (visibleFrame.height - height) / 2
+                let width = frame.width * CGFloat(percentage) / 100.0
+                let height = frame.height * CGFloat(percentage) / 100.0
+                let x = frame.minX + (frame.width - width) / 2
+                let y = frame.minY + (frame.height - height) / 2
                 newFrame = CGRect(x: x, y: y, width: width, height: height)
             } else {
                 print("Invalid center percentage")
@@ -182,11 +182,11 @@ func positionFrontmostWindow(position: WindowPosition, widthSpec: String? = nil,
         } else {
             switch customPosition {
             case "left-third":
-                newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
+                newFrame = CGRect(x: frame.minX, y: frame.minY, width: frame.width / 3, height: frame.height)
             case "center-third":
-                newFrame = CGRect(x: visibleFrame.minX + visibleFrame.width / 3, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
+                newFrame = CGRect(x: frame.minX + frame.width / 3, y: frame.minY, width: frame.width / 3, height: frame.height)
             case "right-third":
-                newFrame = CGRect(x: visibleFrame.maxX - visibleFrame.width / 3, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
+                newFrame = CGRect(x: frame.maxX - frame.width / 3, y: frame.minY, width: frame.width / 3, height: frame.height)
             default:
                 print("Invalid position")
                 return
@@ -386,20 +386,21 @@ func getFrontmostWindowElement() -> AXUIElement? {
     return frontmostWindow
 }
 
+// Update this function to use visibleFrame instead of frame
 func getTargetScreen(for window: AXUIElement) -> NSScreen? {
     guard let windowPosition = getWindowPosition(window) else {
         print("Unable to get window position.")
         return nil
     }
     
-    let mainScreenHeight = NSScreen.screens[0].frame.height
+    let mainScreenHeight = NSScreen.screens[0].visibleFrame.height
     let screenPosition = CGPoint(x: windowPosition.x, y: mainScreenHeight - windowPosition.y)
     
-    guard let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(screenPosition) }) else {
+    guard let targetScreen = NSScreen.screens.first(where: { $0.visibleFrame.contains(screenPosition) }) else {
         print("Unable to determine the screen with the frontmost window.")
         print("Available screens:")
         for (index, screen) in NSScreen.screens.enumerated() {
-            print("Screen \(index): \(screen.frame)")
+            print("Screen \(index): \(screen.visibleFrame)")
         }
         return nil
     }
@@ -407,10 +408,67 @@ func getTargetScreen(for window: AXUIElement) -> NSScreen? {
     return targetScreen
 }
 
+// Update this function to use visibleFrame
 func setWindowFrame(_ window: AXUIElement, _ frame: CGRect) {
-    let flippedY = NSScreen.screens[0].frame.height - (frame.maxY)
+    let mainScreen = NSScreen.screens[0]
+    let flippedY = mainScreen.frame.height - (frame.maxY - mainScreen.frame.minY + mainScreen.visibleFrame.minY)
     setWindowPosition(window, CGPoint(x: frame.minX, y: flippedY))
     setWindowSize(window, CGSize(width: frame.width, height: frame.height))
+}
+
+// Add these new functions
+
+func moveWindowToNextDisplay() {
+    moveWindowToAdjacentDisplay(forward: true)
+}
+
+func moveWindowToPreviousDisplay() {
+    moveWindowToAdjacentDisplay(forward: false)
+}
+
+// Update moveWindowToAdjacentDisplay function
+func moveWindowToAdjacentDisplay(forward: Bool) {
+    guard let frontmostWindow = getFrontmostWindowElement(),
+          let currentScreen = getTargetScreen(for: frontmostWindow),
+          let currentPosition = getWindowPosition(frontmostWindow),
+          let currentSize = getWindowSize(frontmostWindow) else {
+        print("Unable to get window information.")
+        return
+    }
+
+    let screens = NSScreen.screens
+    guard let currentIndex = screens.firstIndex(of: currentScreen) else {
+        print("Current screen not found in screen list.")
+        return
+    }
+
+    let nextIndex = forward ? (currentIndex + 1) % screens.count : (currentIndex - 1 + screens.count) % screens.count
+    let nextScreen = screens[nextIndex]
+
+    let currentVisibleFrame = currentScreen.visibleFrame
+    let nextVisibleFrame = nextScreen.visibleFrame
+
+    // Calculate relative position
+    let relativeX = (currentPosition.x - currentVisibleFrame.minX) / currentVisibleFrame.width
+    let relativeY = (currentPosition.y - currentVisibleFrame.minY) / currentVisibleFrame.height
+
+    // Calculate new position on next screen
+    var newX = nextVisibleFrame.minX + relativeX * nextVisibleFrame.width
+    var newY = nextVisibleFrame.minY + relativeY * nextVisibleFrame.height
+
+    // Calculate new size, constrained to next screen's bounds
+    let newWidth = min(currentSize.width, nextVisibleFrame.width)
+    let newHeight = min(currentSize.height, nextVisibleFrame.height)
+
+    // Adjust position if the window would be partially off-screen
+    newX = max(nextVisibleFrame.minX, min(newX, nextVisibleFrame.maxX - newWidth))
+    newY = max(nextVisibleFrame.minY, min(newY, nextVisibleFrame.maxY - newHeight))
+
+    // Set new position and size
+    let mainScreen = NSScreen.screens[0]
+    let flippedY = mainScreen.frame.height - (newY - mainScreen.frame.minY + mainScreen.visibleFrame.minY + newHeight)
+    setWindowPosition(frontmostWindow, CGPoint(x: newX, y: flippedY))
+    setWindowSize(frontmostWindow, CGSize(width: newWidth, height: newHeight))
 }
 
 // MARK: - Main
@@ -438,6 +496,10 @@ func printHelp() {
       Movement:
         move-up, move-down, move-left, move-right
                              Move the window to the respective edge of the screen
+
+      Display Movement:
+        display-next         Move the window to the next display
+        display-previous     Move the window to the previous display
 
       Custom:
         center-<percentage>  Center the window and resize it to the specified percentage of the screen size
@@ -522,6 +584,10 @@ if CommandLine.arguments.count > 1 {
         moveWindowLeft()
     case "move-right":
         moveWindowRight()
+    case "display-next":
+        moveWindowToNextDisplay()
+    case "display-previous":
+        moveWindowToPreviousDisplay()
     default:
         if command.starts(with: "center-") {
             positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)
