@@ -29,16 +29,16 @@ jobs:
     - name: Build and Sign
       run: |
         swift build -c release
-        mv .build/release/Mac-Windows-Manager ./Mac-Windows-Manager
-        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" ./Mac-Windows-Manager
+        mv .build/release/Mac-Windows-Manager ./mwm
+        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" ./mwm
     
     - name: Generate SHA256
-      run: shasum -a 256 Mac-Windows-Manager > Mac-Windows-Manager.sha256
+      run: shasum -a 256 mwm > mwm.sha256
     
     - name: Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          Mac-Windows-Manager
-          Mac-Windows-Manager.sha256
+          mwm
+          mwm.sha256
         generate_release_notes: true
