@@ -20,13 +20,25 @@ jobs:
       with:
         swift-version: '5.10'
     
-    - name: Build
+    - name: Import Code-Signing Certificates
+      uses: apple-actions/import-codesign-certs@v3
+      with:
+        p12-file-base64: ${{ secrets.CERTIFICATES_P12 }}
+        p12-password: ${{ secrets.CERTIFICATES_P12_PASSWORD }}
+    
+    - name: Build and Sign
       run: |
         swift build -c release
         mv .build/release/Mac-Windows-Manager ./Mac-Windows-Manager
+        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" ./Mac-Windows-Manager
+    
+    - name: Generate SHA256
+      run: shasum -a 256 Mac-Windows-Manager > Mac-Windows-Manager.sha256
     
     - name: Release
       uses: softprops/action-gh-release@v2
       with:
-        files: Mac-Windows-Manager
+        files: |
+          Mac-Windows-Manager
+          Mac-Windows-Manager.sha256
         generate_release_notes: true
