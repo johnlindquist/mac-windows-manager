@@ -103,7 +103,9 @@ func parseSize(spec: String?, currentSize: CGFloat, availableSize: CGFloat) -> C
 }
 
 enum WindowPosition {
-    case left, right, topLeft, topRight, bottomLeft, bottomRight, custom(String)
+    case left, right, topLeft, topRight, bottomLeft, bottomRight
+    case centerLeft, centerTop, centerRight, centerBottom
+    case custom(String)
 }
 
 func positionFrontmostWindow(position: WindowPosition, widthSpec: String? = nil, heightSpec: String? = nil) {
@@ -145,6 +147,26 @@ func positionFrontmostWindow(position: WindowPosition, widthSpec: String? = nil,
         newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: newWidth, height: newHeight)
     case .bottomRight:
         newFrame = CGRect(x: visibleFrame.maxX - newWidth, y: visibleFrame.minY, width: newWidth, height: newHeight)
+    case .centerLeft:
+        newFrame = CGRect(x: visibleFrame.minX, 
+                          y: visibleFrame.midY - newHeight / 2, 
+                          width: newWidth, 
+                          height: newHeight)
+    case .centerTop:
+        newFrame = CGRect(x: visibleFrame.midX - newWidth / 2, 
+                          y: visibleFrame.maxY - newHeight, 
+                          width: newWidth, 
+                          height: newHeight)
+    case .centerRight:
+        newFrame = CGRect(x: visibleFrame.maxX - newWidth, 
+                          y: visibleFrame.midY - newHeight / 2, 
+                          width: newWidth, 
+                          height: newHeight)
+    case .centerBottom:
+        newFrame = CGRect(x: visibleFrame.midX - newWidth / 2, 
+                          y: visibleFrame.minY, 
+                          width: newWidth, 
+                          height: newHeight)
     case .custom(let customPosition):
         if customPosition.starts(with: "center-") {
             if let percentage = parsePercentage(from: customPosition) {
@@ -425,6 +447,14 @@ if CommandLine.arguments.count > 1 {
         positionFrontmostWindow(position: .bottomLeft, widthSpec: widthSpec, heightSpec: heightSpec)
     case "bottom-right":
         positionFrontmostWindow(position: .bottomRight, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "center-left":
+        positionFrontmostWindow(position: .centerLeft, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "center-top":
+        positionFrontmostWindow(position: .centerTop, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "center-right":
+        positionFrontmostWindow(position: .centerRight, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "center-bottom":
+        positionFrontmostWindow(position: .centerBottom, widthSpec: widthSpec, heightSpec: heightSpec)
     case "left-third", "center-third", "right-third":
         positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)
     case "fullscreen":
@@ -447,11 +477,11 @@ if CommandLine.arguments.count > 1 {
         if command.starts(with: "center-") {
             positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)
         } else {
-            print("Unknown command. Available commands: center, left, right, top-left, top-right, bottom-left, bottom-right [width-<size>] [height-<size>], left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
+            print("Unknown command. Available commands: center, left, right, top-left, top-right, bottom-left, bottom-right, center-left, center-top, center-right, center-bottom [width-<size>] [height-<size>], left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
         }
     }
 } else {
     print("Usage: mac-windows-manager <command>")
-    print("Available commands: center, left, right, top-left, top-right, bottom-left, bottom-right [width-<size>] [height-<size>], left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
+    print("Available commands: center, left, right, top-left, top-right, bottom-left, bottom-right, center-left, center-top, center-right, center-bottom [width-<size>] [height-<size>], left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
     print("Size can be specified as a percentage (e.g., 50%) or in pixels (e.g., 500px)")
 }
