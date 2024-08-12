@@ -75,12 +75,16 @@ jobs:
         ditto -c -k --keepParent ./mwm mwm.zip
         
         echo "Submitting for notarization..."
-        xcrun notarytool submit mwm.zip --wait --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$TEAM_ID" --output-format json > notarization_result.json
+        NOTARIZATION_RESULT=$(xcrun notarytool submit mwm.zip --wait --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$TEAM_ID" --output-format json)
+        echo "$NOTARIZATION_RESULT" > notarization_result.json
         
         echo "Notarization result:"
         cat notarization_result.json
         
-        if grep -q '"status":"Accepted"' notarization_result.json; then
+        SUBMISSION_ID=$(echo "$NOTARIZATION_RESULT" | jq -r '.id')
+        echo "SUBMISSION_ID=$SUBMISSION_ID" >> $GITHUB_ENV
+        
+        if echo "$NOTARIZATION_RESULT" | grep -q '"status":"Accepted"'; then
           echo "Notarization successful"
           echo "Verifying binary..."
           spctl --assess -vv ./mwm || echo "Warning: Binary verification failed. This may require further investigation."
@@ -90,9 +94,13 @@ jobs:
         fi
 
     - name: Check Notarization Status
+      env:
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+        TEAM_ID: ${{ secrets.TEAM_ID }}
       run: |
         echo "Checking notarization status..."
-        xcrun notarytool info ./mwm --apple-id "${{ secrets.APPLE_ID }}" --password "${{ secrets.APPLE_ID_PASSWORD }}" --team-id "${{ secrets.TEAM_ID }}"
+        xcrun notarytool info ${{ env.SUBMISSION_ID }} --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$TEAM_ID"
     
     - name: Generate SHA256
       run: shasum -a 256 mwm > mwm.sha256
