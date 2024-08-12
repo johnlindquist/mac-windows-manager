@@ -27,6 +27,8 @@ jobs:
         p12-password: ${{ secrets.CERTIFICATES_P12_PASSWORD }}
     
     - name: Build and Sign
+      env:
+        CERTIFICATE_NAME: ${{ secrets.CERTIFICATE_NAME }}
       run: |
         echo "Building the project..."
         swift build -c release
@@ -45,8 +47,11 @@ jobs:
         </plist>
         EOF
         
+        echo "Listing available signing identities..."
+        security find-identity -v -p codesigning
+        
         echo "Attempting to sign the binary..."
-        /usr/bin/codesign --force -s - --options runtime --entitlements entitlements.plist -v ./mwm
+        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" --options runtime --entitlements entitlements.plist -v ./mwm
         
         echo "Verifying code signature..."
         /usr/bin/codesign -dv --verbose=4 ./mwm
