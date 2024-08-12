@@ -10,6 +10,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Mac-Windows-Manager",
-            dependencies: []),
+            dependencies: [],
+            path: "Sources"
+        ),
     ]
 )

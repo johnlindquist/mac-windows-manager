@@ -9,19 +9,13 @@ Mac-Windows-Manager is a powerful macOS command-line tool that allows you to pre
 
 ## Installation
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/yourusername/Mac-Windows-Manager.git
-   ```
-2. Navigate to the project directory:
-   ```
-   cd Mac-Windows-Manager
-   ```
-3. Build the project:
-   ```
-   swift build -c release
-   ```
-4. The executable will be located at `.build/release/Mac-Windows-Manager`. You can move it to a directory in your PATH for easy access.
+You can download the latest release of Mac-Windows-Manager from the [Releases](https://github.com/yourusername/Mac-Windows-Manager/releases) page.
+
+After downloading, you may need to make the file executable:
+
+```
+chmod +x Mac-Windows-Manager
+```
 
 ## Usage
 
