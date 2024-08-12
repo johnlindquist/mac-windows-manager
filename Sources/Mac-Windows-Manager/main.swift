@@ -414,10 +414,59 @@ func setWindowFrame(_ window: AXUIElement, _ frame: CGRect) {
 }
 
 // MARK: - Main
+func printHelp() {
+    print("""
+    Usage: mac-windows-manager <command> [width-<size>] [height-<size>]
+
+    Available commands:
+      Positioning:
+        center               Center the window on the screen
+        left, right          Position the window on the left or right side of the screen
+        top-left, top-right, bottom-left, bottom-right
+                             Position the window in the corners of the screen
+        center-left, center-top, center-right, center-bottom
+                             Position the window centered on each edge of the screen
+        left-third, center-third, right-third
+                             Divide the screen into thirds and position the window accordingly
+
+      Sizing:
+        fullscreen           Toggle fullscreen mode for the window
+        maximize             Maximize the window to fill the screen
+        maximize-height      Maximize the window's height while maintaining its width
+        maximize-width       Maximize the window's width while maintaining its height
+
+      Movement:
+        move-up, move-down, move-left, move-right
+                             Move the window to the respective edge of the screen
+
+      Custom:
+        center-<percentage>  Center the window and resize it to the specified percentage of the screen size
+
+    Size specifications:
+      width-<size>, height-<size>
+        <size> can be specified as a percentage (e.g., 50%) or in pixels (e.g., 500px)
+        If not specified, the current window size is maintained.
+
+    Examples:
+      mac-windows-manager center width-80% height-70%
+      mac-windows-manager top-right width-1000px
+      mac-windows-manager left maximize-height
+      mac-windows-manager center-60
+
+    Note: This tool requires accessibility permissions to function.
+    """)
+}
+
 if CommandLine.arguments.count > 1 {
-    let command = CommandLine.arguments[1]
+    let command = CommandLine.arguments[1].lowercased() // Convert to lowercase for case-insensitive matching
     var widthSpec: String?
     var heightSpec: String?
+    
+    // Check for help flags first
+    if command == "-h" || command == "--help" || command == "help" {
+        printHelp()
+        exit(0)
+    }
     
     for arg in CommandLine.arguments.dropFirst(2) {
         let parts = arg.split(separator: "-")
@@ -477,11 +526,10 @@ if CommandLine.arguments.count > 1 {
         if command.starts(with: "center-") {
             positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)
         } else {
-            print("Unknown command. Available commands: center, left, right, top-left, top-right, bottom-left, bottom-right, center-left, center-top, center-right, center-bottom [width-<size>] [height-<size>], left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
+            print("Unknown command. Use -h or --help for usage information.")
+            printHelp()
         }
     }
 } else {
-    print("Usage: mac-windows-manager <command>")
-    print("Available commands: center, left, right, top-left, top-right, bottom-left, bottom-right, center-left, center-top, center-right, center-bottom [width-<size>] [height-<size>], left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
-    print("Size can be specified as a percentage (e.g., 50%) or in pixels (e.g., 500px)")
+    printHelp()
 }
