@@ -46,7 +46,7 @@ jobs:
         EOF
         
         echo "Attempting to sign the binary..."
-        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" --options runtime --entitlements entitlements.plist -v ./mwm
+        /usr/bin/codesign --force -s - --options runtime --entitlements entitlements.plist -v ./mwm
         
         echo "Verifying code signature..."
         /usr/bin/codesign -dv --verbose=4 ./mwm
