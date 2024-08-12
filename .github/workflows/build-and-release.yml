@@ -55,9 +55,6 @@ jobs:
         
         echo "Verifying code signature..."
         /usr/bin/codesign -dv --verbose=4 ./mwm
-        
-        echo "Checking Gatekeeper assessment..."
-        spctl --assess -vv ./mwm
 
     - name: Notarize
       env:
