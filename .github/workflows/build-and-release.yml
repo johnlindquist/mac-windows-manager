@@ -56,6 +56,15 @@ jobs:
         echo "Verifying code signature..."
         /usr/bin/codesign -dv --verbose=4 ./mwm
 
+    - name: Check Binary Structure
+      run: |
+        echo "Binary information:"
+        file ./mwm
+        echo "Binary structure:"
+        otool -l ./mwm | grep -A 2 LC_CODE_SIGNATURE
+        echo "Directory structure:"
+        ls -R ./
+
     - name: Notarize
       env:
         APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -72,15 +81,9 @@ jobs:
         cat notarization_result.json
         
         if grep -q '"status":"Accepted"' notarization_result.json; then
-          echo "Notarization successful, attempting to staple ticket..."
-          xcrun stapler staple ./mwm || {
-            echo "Warning: Stapling failed. This is unusual and may require investigation."
-            echo "Stapler verbose output:"
-            xcrun stapler staple -v ./mwm
-            echo "Continuing workflow despite stapling failure."
-          }
-          echo "Verifying binary (even if stapling failed)..."
-          spctl --assess -vv ./mwm || echo "Warning: Binary verification failed. This may be due to stapling failure."
+          echo "Notarization successful"
+          echo "Verifying binary..."
+          spctl --assess -vv ./mwm || echo "Warning: Binary verification failed. This may require further investigation."
         else
           echo "Notarization failed. Check the output above for details."
           exit 1
