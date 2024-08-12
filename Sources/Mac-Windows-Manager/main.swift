@@ -102,8 +102,11 @@ func parseSize(spec: String?, currentSize: CGFloat, availableSize: CGFloat) -> C
     return currentSize
 }
 
-// Modified window positioning function
-func positionFrontmostWindow(position: String) {
+enum WindowPosition {
+    case left, right, topLeft, topRight, bottomLeft, bottomRight, custom(String)
+}
+
+func positionFrontmostWindow(position: WindowPosition, widthSpec: String? = nil, heightSpec: String? = nil) {
     guard requestAccessibilityPermission() else {
         return
     }
@@ -114,72 +117,71 @@ func positionFrontmostWindow(position: String) {
         return
     }
     
-    guard let windowPosition = getWindowPosition(frontmostWindow) else {
-        print("Unable to get window position.")
-        return
-    }
-    
-    // Debug print
-    print("Window position: \(windowPosition)")
-    
-    // Convert window position to screen coordinates
-    let mainScreenHeight = NSScreen.screens[0].frame.height
-    let screenPosition = CGPoint(x: windowPosition.x, y: mainScreenHeight - windowPosition.y)
-    
-    // Debug print
-    print("Converted screen position: \(screenPosition)")
-    
-    guard let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(screenPosition) }) else {
-        print("Unable to determine the screen with the frontmost window.")
-        print("Available screens:")
-        for (index, screen) in NSScreen.screens.enumerated() {
-            print("Screen \(index): \(screen.frame)")
-        }
-        return
-    }
-    
-    guard getWindowSize(frontmostWindow) != nil else {
-        print("Unable to get window size.")
+    guard let targetScreen = getTargetScreen(for: frontmostWindow),
+          let currentSize = getWindowSize(frontmostWindow) else {
+        print("Unable to get window information.")
         return
     }
     
     let visibleFrame = targetScreen.visibleFrame
-    var newFrame = CGRect.zero
+    print("Screen visible frame: \(visibleFrame)")
     
-    if position.starts(with: "center-") {
-        if let percentage = parsePercentage(from: position) {
-            let width = visibleFrame.width * CGFloat(percentage) / 100.0
-            let height = visibleFrame.height * CGFloat(percentage) / 100.0
-            let x = visibleFrame.minX + (visibleFrame.width - width) / 2
-            let y = visibleFrame.minY + (visibleFrame.height - height) / 2
-            newFrame = CGRect(x: x, y: y, width: width, height: height)
+    let newWidth = parseSize(spec: widthSpec, currentSize: currentSize.width, availableSize: visibleFrame.width)
+    let newHeight = parseSize(spec: heightSpec, currentSize: currentSize.height, availableSize: visibleFrame.height)
+    print("Parsed new width: \(newWidth), Parsed new height: \(newHeight)")
+    
+    var newFrame: CGRect
+    
+    switch position {
+    case .left:
+        newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: newWidth, height: newHeight)
+    case .right:
+        newFrame = CGRect(x: visibleFrame.maxX - newWidth, y: visibleFrame.minY, width: newWidth, height: newHeight)
+    case .topLeft:
+        newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.maxY - newHeight, width: newWidth, height: newHeight)
+    case .topRight:
+        newFrame = CGRect(x: visibleFrame.maxX - newWidth, y: visibleFrame.maxY - newHeight, width: newWidth, height: newHeight)
+    case .bottomLeft:
+        newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: newWidth, height: newHeight)
+    case .bottomRight:
+        newFrame = CGRect(x: visibleFrame.maxX - newWidth, y: visibleFrame.minY, width: newWidth, height: newHeight)
+    case .custom(let customPosition):
+        if customPosition.starts(with: "center-") {
+            if let percentage = parsePercentage(from: customPosition) {
+                let width = visibleFrame.width * CGFloat(percentage) / 100.0
+                let height = visibleFrame.height * CGFloat(percentage) / 100.0
+                let x = visibleFrame.minX + (visibleFrame.width - width) / 2
+                let y = visibleFrame.minY + (visibleFrame.height - height) / 2
+                newFrame = CGRect(x: x, y: y, width: width, height: height)
+            } else {
+                print("Invalid center percentage")
+                return
+            }
         } else {
-            print("Invalid center percentage")
-            return
-        }
-    } else {
-        switch position {
-        case "left":
-            newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: visibleFrame.width / 2, height: visibleFrame.height)
-        case "right":
-            newFrame = CGRect(x: visibleFrame.midX, y: visibleFrame.minY, width: visibleFrame.width / 2, height: visibleFrame.height)
-        case "left-third":
-            newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
-        case "center-third":
-            newFrame = CGRect(x: visibleFrame.minX + visibleFrame.width / 3, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
-        case "right-third":
-            newFrame = CGRect(x: visibleFrame.maxX - visibleFrame.width / 3, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
-        default:
-            print("Invalid position")
-            return
+            switch customPosition {
+            case "left-third":
+                newFrame = CGRect(x: visibleFrame.minX, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
+            case "center-third":
+                newFrame = CGRect(x: visibleFrame.minX + visibleFrame.width / 3, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
+            case "right-third":
+                newFrame = CGRect(x: visibleFrame.maxX - visibleFrame.width / 3, y: visibleFrame.minY, width: visibleFrame.width / 3, height: visibleFrame.height)
+            default:
+                print("Invalid position")
+                return
+            }
         }
     }
     
-    let flippedY = mainScreenHeight - (newFrame.maxY)
+    let flippedY = NSScreen.screens[0].frame.height - newFrame.maxY
     let newPosition = CGPoint(x: newFrame.minX, y: flippedY)
     
+    print("Setting new position: \(newPosition), new size: \(newFrame.size)")
     setWindowPosition(frontmostWindow, newPosition)
-    setWindowSize(frontmostWindow, CGSize(width: newFrame.width, height: newFrame.height))
+    
+    // Only set the size if width or height was specified
+    if widthSpec != nil || heightSpec != nil {
+        setWindowSize(frontmostWindow, newFrame.size)
+    }
 }
 
 // Helper function to parse percentage from command
@@ -373,6 +375,10 @@ func getTargetScreen(for window: AXUIElement) -> NSScreen? {
     
     guard let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(screenPosition) }) else {
         print("Unable to determine the screen with the frontmost window.")
+        print("Available screens:")
+        for (index, screen) in NSScreen.screens.enumerated() {
+            print("Screen \(index): \(screen.frame)")
+        }
         return nil
     }
     
@@ -388,53 +394,64 @@ func setWindowFrame(_ window: AXUIElement, _ frame: CGRect) {
 // MARK: - Main
 if CommandLine.arguments.count > 1 {
     let command = CommandLine.arguments[1]
-    if command == "center" {
-        var widthSpec: String?
-        var heightSpec: String?
-        
-        for arg in CommandLine.arguments.dropFirst(2) {
-            let parts = arg.split(separator: "-")
-            if parts.count == 2 {
-                if parts[0] == "width" {
-                    widthSpec = String(parts[1])
-                } else if parts[0] == "height" {
-                    heightSpec = String(parts[1])
-                }
+    var widthSpec: String?
+    var heightSpec: String?
+    
+    for arg in CommandLine.arguments.dropFirst(2) {
+        let parts = arg.split(separator: "-")
+        if parts.count == 2 {
+            if parts[0] == "width" {
+                widthSpec = String(parts[1])
+            } else if parts[0] == "height" {
+                heightSpec = String(parts[1])
             }
         }
-        
-        print("Parsed width spec: \(widthSpec ?? "nil"), height spec: \(heightSpec ?? "nil")")
+    }
+    
+    print("Parsed width spec: \(widthSpec ?? "nil"), height spec: \(heightSpec ?? "nil")")
+    
+    switch command {
+    case "center":
         centerFrontmostWindow(widthSpec: widthSpec, heightSpec: heightSpec)
-    } else {
-        switch command {
-        case "left", "right", "left-third", "center-third", "right-third":
-            positionFrontmostWindow(position: command)
-        case "fullscreen":
-            toggleFullscreen()
-        case "maximize":
-            maximizeWindow()
-        case "maximize-height":
-            maximizeWindowHeight()
-        case "maximize-width":
-            maximizeWindowWidth()
-        case "move-up":
-            moveWindowUp()
-        case "move-down":
-            moveWindowDown()
-        case "move-left":
-            moveWindowLeft()
-        case "move-right":
-            moveWindowRight()
-        default:
-            if command.starts(with: "center-") {
-                positionFrontmostWindow(position: command)
-            } else {
-                print("Unknown command. Available commands: center [width-<size>] [height-<size>], left, right, left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
-            }
+    case "left":
+        positionFrontmostWindow(position: .left, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "right":
+        positionFrontmostWindow(position: .right, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "top-left":
+        positionFrontmostWindow(position: .topLeft, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "top-right":
+        positionFrontmostWindow(position: .topRight, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "bottom-left":
+        positionFrontmostWindow(position: .bottomLeft, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "bottom-right":
+        positionFrontmostWindow(position: .bottomRight, widthSpec: widthSpec, heightSpec: heightSpec)
+    case "left-third", "center-third", "right-third":
+        positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)
+    case "fullscreen":
+        toggleFullscreen()
+    case "maximize":
+        maximizeWindow()
+    case "maximize-height":
+        maximizeWindowHeight()
+    case "maximize-width":
+        maximizeWindowWidth()
+    case "move-up":
+        moveWindowUp()
+    case "move-down":
+        moveWindowDown()
+    case "move-left":
+        moveWindowLeft()
+    case "move-right":
+        moveWindowRight()
+    default:
+        if command.starts(with: "center-") {
+            positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)
+        } else {
+            print("Unknown command. Available commands: center, left, right, top-left, top-right, bottom-left, bottom-right [width-<size>] [height-<size>], left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
         }
     }
 } else {
     print("Usage: mac-windows-manager <command>")
-    print("Available commands: center [width-<size>] [height-<size>], left, right, left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
+    print("Available commands: center, left, right, top-left, top-right, bottom-left, bottom-right [width-<size>] [height-<size>], left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
     print("Size can be specified as a percentage (e.g., 50%) or in pixels (e.g., 500px)")
 }
