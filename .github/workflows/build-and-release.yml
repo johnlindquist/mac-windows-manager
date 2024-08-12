@@ -71,7 +71,7 @@ jobs:
         echo "Notarization result:"
         cat notarization_result.json
         
-        if grep -q "success" notarization_result.json; then
+        if grep -q '"status":"Accepted"' notarization_result.json; then
           echo "Notarization successful, stapling ticket..."
           xcrun stapler staple ./mwm
           echo "Verifying stapled binary..."
