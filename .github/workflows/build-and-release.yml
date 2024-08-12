@@ -28,9 +28,31 @@ jobs:
     
     - name: Build and Sign
       run: |
+        echo "Building the project..."
         swift build -c release
+        echo "Moving binary to current directory..."
         mv .build/release/mwm ./mwm
-        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" ./mwm
+        
+        echo "Checking binary details before signing..."
+        file ./mwm
+        otool -L ./mwm
+        
+        echo "Attempting to sign the binary..."
+        /usr/bin/codesign --force -s "${{ secrets.DEVELOPER_ID_APPLICATION }}" -v ./mwm
+        
+        echo "Verifying code signature..."
+        /usr/bin/codesign -dv --verbose=4 ./mwm
+        
+        echo "Checking Gatekeeper assessment..."
+        spctl --assess -vv ./mwm
+        
+        echo "Displaying entitlements..."
+        codesign -d --entitlements :- ./mwm
+    
+    - name: Check Notarization Status
+      run: |
+        echo "Checking notarization status..."
+        xcrun notarytool info ./mwm --apple-id "${{ secrets.APPLE_ID }}" --password "${{ secrets.APPLE_ID_PASSWORD }}" --team-id "${{ secrets.TEAM_ID }}"
     
     - name: Generate SHA256
       run: shasum -a 256 mwm > mwm.sha256
