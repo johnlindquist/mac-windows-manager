@@ -2,19 +2,21 @@ name: Build and Release
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - "v*.*.*"
 
 jobs:
   build-and-release:
     runs-on: macos-latest
+    
     permissions:
       contents: write
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Swift
-      uses: swift-actions/setup-swift@v1
+      uses: swift-actions/setup-swift@v2
       with:
         swift-version: '5.10'
     
@@ -23,10 +25,8 @@ jobs:
         swift build -c release
         mv .build/release/Mac-Windows-Manager ./Mac-Windows-Manager
     
-    - name: Create Release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh release create v${{ github.run_number }} ./Mac-Windows-Manager \
-          --title "Release ${{ github.run_number }}" \
-          --notes "Automated release for commit ${{ github.sha }}"
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: Mac-Windows-Manager
+        generate_release_notes: true
