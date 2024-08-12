@@ -14,8 +14,11 @@ func requestAccessibilityPermission() -> Bool {
 }
 
 // MARK: - Window Management
-func centerFrontmostWindow() {
+func centerFrontmostWindow(widthSpec: String? = nil, heightSpec: String? = nil) {
+    print("--- Starting centerFrontmostWindow ---")
+    print("Width spec: \(widthSpec ?? "nil"), Height spec: \(heightSpec ?? "nil")")
     guard requestAccessibilityPermission() else {
+        print("Accessibility permission not granted.")
         return
     }
 
@@ -25,43 +28,78 @@ func centerFrontmostWindow() {
         return
     }
     
-    guard let windowPosition = getWindowPosition(frontmostWindow) else {
-        print("Unable to get window position.")
+    print("Frontmost app: \(frontmostApp.localizedName ?? "Unknown")")
+    
+    guard let targetScreen = getTargetScreen(for: frontmostWindow),
+          let currentSize = getWindowSize(frontmostWindow) else {
+        print("Unable to get window information.")
         return
     }
     
-    // Debug print
-    print("Window position: \(windowPosition)")
-    
-    // Convert window position to screen coordinates
-    let mainScreenHeight = NSScreen.screens[0].frame.height
-    let screenPosition = CGPoint(x: windowPosition.x, y: mainScreenHeight - windowPosition.y)
-    
-    // Debug print
-    print("Converted screen position: \(screenPosition)")
-    
-    guard let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(screenPosition) }) else {
-        print("Unable to determine the screen with the frontmost window.")
-        print("Available screens:")
-        for (index, screen) in NSScreen.screens.enumerated() {
-            print("Screen \(index): \(screen.frame)")
-        }
-        return
-    }
-    
-    guard let windowSize = getWindowSize(frontmostWindow) else {
-        print("Unable to get window size.")
-        return
-    }
+    print("Target screen: \(targetScreen)")
+    print("Current window size: \(currentSize)")
     
     let visibleFrame = targetScreen.visibleFrame
-    let centerX = visibleFrame.minX + (visibleFrame.width - windowSize.width) / 2
-    let centerY = visibleFrame.minY + (visibleFrame.height - windowSize.height) / 2
+    print("Screen visible frame: \(visibleFrame)")
     
-    let flippedY = mainScreenHeight - (centerY + windowSize.height)
-    let newPosition = CGPoint(x: centerX, y: flippedY)
+    let newWidth = parseSize(spec: widthSpec, currentSize: currentSize.width, availableSize: visibleFrame.width)
+    let newHeight = parseSize(spec: heightSpec, currentSize: currentSize.height, availableSize: visibleFrame.height)
+    print("Parsed new width: \(newWidth), Parsed new height: \(newHeight)")
+    
+    let centerX = visibleFrame.minX + (visibleFrame.width - newWidth) / 2
+    let centerY = visibleFrame.minY + (visibleFrame.height - newHeight) / 2
+    print("Calculated center: (\(centerX), \(centerY))")
+    
+    // Convert the y-coordinate to the coordinate system used by the Accessibility API
+    let flippedCenterY = NSScreen.screens[0].frame.height - (centerY + newHeight)
+    print("Flipped center Y: \(flippedCenterY)")
+    
+    let newPosition = CGPoint(x: centerX, y: flippedCenterY)
+    print("New position: \(newPosition)")
+    
+    if let currentPosition = getWindowPosition(frontmostWindow) {
+        print("Current window position: \(currentPosition)")
+    } else {
+        print("Unable to get current window position")
+    }
     
     setWindowPosition(frontmostWindow, newPosition)
+    setWindowSize(frontmostWindow, CGSize(width: newWidth, height: newHeight))
+    
+    // Verify the new position and size
+    if let newActualPosition = getWindowPosition(frontmostWindow),
+       let newActualSize = getWindowSize(frontmostWindow) {
+        print("New actual position: \(newActualPosition)")
+        print("New actual size: \(newActualSize)")
+    } else {
+        print("Unable to verify new window position and size")
+    }
+    
+    print("--- Finished centerFrontmostWindow ---")
+}
+
+func parseSize(spec: String?, currentSize: CGFloat, availableSize: CGFloat) -> CGFloat {
+    print("Parsing size - Spec: \(spec ?? "nil"), Current size: \(currentSize), Available size: \(availableSize)")
+    guard let spec = spec else {
+        print("No spec provided, returning current size: \(currentSize)")
+        return currentSize
+    }
+    
+    if spec.hasSuffix("%") {
+        if let percentage = Double(spec.dropLast()) {
+            let newSize = availableSize * CGFloat(percentage) / 100.0
+            print("Parsed percentage: \(percentage)%, New size: \(newSize)")
+            return newSize
+        }
+    } else if spec.hasSuffix("px") {
+        if let pixels = Double(spec.dropLast(2)) {
+            print("Parsed pixels: \(pixels)px")
+            return CGFloat(pixels)
+        }
+    }
+    
+    print("Invalid size specification: \(spec). Using current size: \(currentSize)")
+    return currentSize
 }
 
 // Modified window positioning function
@@ -156,9 +194,16 @@ func parsePercentage(from command: String) -> Int? {
 }
 
 func setWindowSize(_ window: AXUIElement, _ size: CGSize) {
+    print("Setting window size to: \(size)")
     var sizeCopy = size
-    guard let sizeValue = AXValueCreate(.cgSize, &sizeCopy) else { return }
-    AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+    guard let sizeValue = AXValueCreate(.cgSize, &sizeCopy) else {
+        print("Failed to create AXValue for size")
+        return
+    }
+    let error = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+    if error != .success {
+        print("Failed to set window size. Error: \(error)")
+    }
 }
 
 func getFrontmostWindow(for pid: pid_t) -> AXUIElement? {
@@ -182,9 +227,16 @@ func getWindowSize(_ window: AXUIElement) -> CGSize? {
 }
 
 func setWindowPosition(_ window: AXUIElement, _ position: CGPoint) {
+    print("Setting window position to: \(position)")
     var positionCopy = position
-    guard let positionValue = AXValueCreate(.cgPoint, &positionCopy) else { return }
-    AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+    guard let positionValue = AXValueCreate(.cgPoint, &positionCopy) else {
+        print("Failed to create AXValue for position")
+        return
+    }
+    let error = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+    if error != .success {
+        print("Failed to set window position. Error: \(error)")
+    }
 }
 
 // New function to get window position
@@ -328,19 +380,33 @@ func getTargetScreen(for window: AXUIElement) -> NSScreen? {
 }
 
 func setWindowFrame(_ window: AXUIElement, _ frame: CGRect) {
-    setWindowPosition(window, CGPoint(x: frame.minX, y: frame.minY))
+    let flippedY = NSScreen.screens[0].frame.height - (frame.maxY)
+    setWindowPosition(window, CGPoint(x: frame.minX, y: flippedY))
     setWindowSize(window, CGSize(width: frame.width, height: frame.height))
 }
 
 // MARK: - Main
 if CommandLine.arguments.count > 1 {
     let command = CommandLine.arguments[1]
-    if command.starts(with: "center-") {
-        positionFrontmostWindow(position: command)
+    if command == "center" {
+        var widthSpec: String?
+        var heightSpec: String?
+        
+        for arg in CommandLine.arguments.dropFirst(2) {
+            let parts = arg.split(separator: "-")
+            if parts.count == 2 {
+                if parts[0] == "width" {
+                    widthSpec = String(parts[1])
+                } else if parts[0] == "height" {
+                    heightSpec = String(parts[1])
+                }
+            }
+        }
+        
+        print("Parsed width spec: \(widthSpec ?? "nil"), height spec: \(heightSpec ?? "nil")")
+        centerFrontmostWindow(widthSpec: widthSpec, heightSpec: heightSpec)
     } else {
         switch command {
-        case "center":
-            centerFrontmostWindow()
         case "left", "right", "left-third", "center-third", "right-third":
             positionFrontmostWindow(position: command)
         case "fullscreen":
@@ -360,10 +426,15 @@ if CommandLine.arguments.count > 1 {
         case "move-right":
             moveWindowRight()
         default:
-            print("Unknown command. Available commands: center, left, right, left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
+            if command.starts(with: "center-") {
+                positionFrontmostWindow(position: command)
+            } else {
+                print("Unknown command. Available commands: center [width-<size>] [height-<size>], left, right, left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
+            }
         }
     }
 } else {
     print("Usage: mac-windows-manager <command>")
-    print("Available commands: center, left, right, left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
+    print("Available commands: center [width-<size>] [height-<size>], left, right, left-third, center-third, right-third, center-[percentage], fullscreen, maximize, maximize-height, maximize-width, move-up, move-down, move-left, move-right")
+    print("Size can be specified as a percentage (e.g., 50%) or in pixels (e.g., 500px)")
 }
