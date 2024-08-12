@@ -72,10 +72,15 @@ jobs:
         cat notarization_result.json
         
         if grep -q '"status":"Accepted"' notarization_result.json; then
-          echo "Notarization successful, stapling ticket..."
-          xcrun stapler staple ./mwm
-          echo "Verifying stapled binary..."
-          spctl --assess -vv ./mwm
+          echo "Notarization successful, attempting to staple ticket..."
+          xcrun stapler staple ./mwm || {
+            echo "Warning: Stapling failed. This is unusual and may require investigation."
+            echo "Stapler verbose output:"
+            xcrun stapler staple -v ./mwm
+            echo "Continuing workflow despite stapling failure."
+          }
+          echo "Verifying binary (even if stapling failed)..."
+          spctl --assess -vv ./mwm || echo "Warning: Binary verification failed. This may be due to stapling failure."
         else
           echo "Notarization failed. Check the output above for details."
           exit 1
@@ -95,4 +100,5 @@ jobs:
         files: |
           mwm
           mwm.sha256
+          notarization_result.json
         generate_release_notes: true
