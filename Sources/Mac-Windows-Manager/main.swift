@@ -50,21 +50,8 @@ func centerFrontmostWindow(widthSpec: String? = nil, heightSpec: String? = nil) 
     let centerY = visibleFrame.minY + (visibleFrame.height - newHeight) / 2
     print("Calculated center: (\(centerX), \(centerY))")
     
-    // Convert the y-coordinate to the coordinate system used by the Accessibility API
-    let flippedCenterY = NSScreen.screens[0].frame.height - (centerY + newHeight)
-    print("Flipped center Y: \(flippedCenterY)")
-    
-    let newPosition = CGPoint(x: centerX, y: flippedCenterY)
-    print("New position: \(newPosition)")
-    
-    if let currentPosition = getWindowPosition(frontmostWindow) {
-        print("Current window position: \(currentPosition)")
-    } else {
-        print("Unable to get current window position")
-    }
-    
-    setWindowPosition(frontmostWindow, newPosition)
-    setWindowSize(frontmostWindow, CGSize(width: newWidth, height: newHeight))
+    let newFrame = CGRect(x: centerX, y: centerY, width: newWidth, height: newHeight)
+    setWindowFrame(frontmostWindow, newFrame)
     
     // Verify the new position and size
     if let newActualPosition = getWindowPosition(frontmostWindow),
@@ -194,16 +181,7 @@ func positionFrontmostWindow(position: WindowPosition, widthSpec: String? = nil,
         }
     }
     
-    let flippedY = NSScreen.screens[0].frame.height - newFrame.maxY
-    let newPosition = CGPoint(x: newFrame.minX, y: flippedY)
-    
-    print("Setting new position: \(newPosition), new size: \(newFrame.size)")
-    setWindowPosition(frontmostWindow, newPosition)
-    
-    // Only set the size if width or height was specified
-    if widthSpec != nil || heightSpec != nil {
-        setWindowSize(frontmostWindow, newFrame.size)
-    }
+    setWindowFrame(frontmostWindow, newFrame)
 }
 
 // Helper function to parse percentage from command
@@ -217,16 +195,28 @@ func parsePercentage(from command: String) -> Int? {
     return percentage
 }
 
-func setWindowSize(_ window: AXUIElement, _ size: CGSize) {
-    print("Setting window size to: \(size)")
-    var sizeCopy = size
-    guard let sizeValue = AXValueCreate(.cgSize, &sizeCopy) else {
-        print("Failed to create AXValue for size")
+// Replace setWindowPosition and setWindowSize with this new function
+func setWindowFrame(_ window: AXUIElement, _ frame: CGRect) {
+    print("Setting window frame to: \(frame)")
+    
+    let mainScreen = NSScreen.screens[0]
+    // Correct the Y-coordinate conversion
+    let flippedY = mainScreen.frame.height - frame.maxY
+    
+    var position = CGPoint(x: frame.minX, y: flippedY)
+    var size = frame.size
+    
+    guard let positionValue = AXValueCreate(.cgPoint, &position),
+          let sizeValue = AXValueCreate(.cgSize, &size) else {
+        print("Failed to create AXValues for position and size")
         return
     }
-    let error = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
-    if error != .success {
-        print("Failed to set window size. Error: \(error)")
+    
+    let positionError = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+    let sizeError = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+    
+    if positionError != .success || sizeError != .success {
+        print("Failed to set window frame. Position error: \(positionError), Size error: \(sizeError)")
     }
 }
 
@@ -248,19 +238,6 @@ func getWindowSize(_ window: AXUIElement) -> CGSize? {
     var size = CGSize.zero
     AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
     return size
-}
-
-func setWindowPosition(_ window: AXUIElement, _ position: CGPoint) {
-    print("Setting window position to: \(position)")
-    var positionCopy = position
-    guard let positionValue = AXValueCreate(.cgPoint, &positionCopy) else {
-        print("Failed to create AXValue for position")
-        return
-    }
-    let error = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
-    if error != .success {
-        print("Failed to set window position. Error: \(error)")
-    }
 }
 
 // New function to get window position
@@ -408,16 +385,6 @@ func getTargetScreen(for window: AXUIElement) -> NSScreen? {
     return targetScreen
 }
 
-// Update this function to use visibleFrame
-func setWindowFrame(_ window: AXUIElement, _ frame: CGRect) {
-    let mainScreen = NSScreen.screens[0]
-    let flippedY = mainScreen.frame.height - (frame.maxY - mainScreen.frame.minY + mainScreen.visibleFrame.minY)
-    setWindowPosition(window, CGPoint(x: frame.minX, y: flippedY))
-    setWindowSize(window, CGSize(width: frame.width, height: frame.height))
-}
-
-// Add these new functions
-
 func moveWindowToNextDisplay() {
     moveWindowToAdjacentDisplay(forward: true)
 }
@@ -465,16 +432,14 @@ func moveWindowToAdjacentDisplay(forward: Bool) {
     newY = max(nextVisibleFrame.minY, min(newY, nextVisibleFrame.maxY - newHeight))
 
     // Set new position and size
-    let mainScreen = NSScreen.screens[0]
-    let flippedY = mainScreen.frame.height - (newY - mainScreen.frame.minY + mainScreen.visibleFrame.minY + newHeight)
-    setWindowPosition(frontmostWindow, CGPoint(x: newX, y: flippedY))
-    setWindowSize(frontmostWindow, CGSize(width: newWidth, height: newHeight))
+    let newFrame = CGRect(x: newX, y: newY, width: newWidth, height: newHeight)
+    setWindowFrame(frontmostWindow, newFrame)
 }
 
 // MARK: - Main
 func printHelp() {
     print("""
-    Usage: mac-windows-manager <command> [width-<size>] [height-<size>]
+    Usage: mwm <command> [width-<size>] [height-<size>]
 
     Available commands:
       Positioning:
@@ -510,10 +475,10 @@ func printHelp() {
         If not specified, the current window size is maintained.
 
     Examples:
-      mac-windows-manager center width-80% height-70%
-      mac-windows-manager top-right width-1000px
-      mac-windows-manager left maximize-height
-      mac-windows-manager center-60
+      mwm center width-80% height-70%
+      mwm top-right width-1000px
+      mwm left maximize-height
+      mwm center-60
 
     Note: This tool requires accessibility permissions to function.
     """)

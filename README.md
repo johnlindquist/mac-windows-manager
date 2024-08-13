@@ -1,6 +1,6 @@
-# Mac-Windows-Manager
+# mwm (Mac Windows Manager)
 
-Mac-Windows-Manager is a powerful macOS command-line tool that allows you to precisely control window positioning and sizing on your screen.
+mwm is a powerful macOS command-line tool that allows you to precisely control window positioning and sizing on your screen.
 
 ## Requirements
 
@@ -9,20 +9,20 @@ Mac-Windows-Manager is a powerful macOS command-line tool that allows you to pre
 
 ## Installation
 
-You can download the latest release of Mac-Windows-Manager from the [Releases](https://github.com/yourusername/Mac-Windows-Manager/releases) page.
+You can download the latest release of mwm from the [Releases](https://github.com/yourusername/mwm/releases) page.
 
 After downloading, you may need to make the file executable:
 
 ```
-chmod +x Mac-Windows-Manager
+chmod +x mwm
 ```
 
 ## Usage
 
-The general syntax for using Mac-Windows-Manager is:
+The general syntax for using mwm is:
 
 ```
-mac-windows-manager <command> [width-<size>] [height-<size>]
+mwm <command> [width-<size>] [height-<size>]
 ```
 
 ### Available Commands
@@ -63,49 +63,49 @@ If no size is specified, the current window size is maintained.
 
 1. Center the window and set it to 80% of screen width and 70% of screen height:
    ```
-   mac-windows-manager center width-80% height-70%
+   mwm center width-80% height-70%
    ```
 
 2. Move the window to the top-right corner and set its width to 1000 pixels:
    ```
-   mac-windows-manager top-right width-1000px
+   mwm top-right width-1000px
    ```
 
 3. Position the window on the left side of the screen and maximize its height:
    ```
-   mac-windows-manager left maximize-height
+   mwm left maximize-height
    ```
 
 4. Center the window and set its size to 60% of the screen:
    ```
-   mac-windows-manager center-60
+   mwm center-60
    ```
 
 5. Move the window to the next display:
    ```
-   mac-windows-manager display-next
+   mwm display-next
    ```
 
 6. Move the window to the previous display:
    ```
-   mac-windows-manager display-previous
+   mwm display-previous
    ```
 
 ### Help
 
 You can access the help information by running the tool with the `-h` or `--help` flag:
 ```
-mac-windows-manager -h
+mwm -h
 ```
 or
 ```
-mac-windows-manager --help
+mwm --help
 ```
 This will display the available commands, size specifications, and examples.
 
 ## How it works
 
-Mac-Windows-Manager uses the macOS Accessibility API to identify the frontmost application and its frontmost window. It then calculates the appropriate position and size based on the command and arguments provided, and applies these changes to the window.
+mwm uses the macOS Accessibility API to identify the frontmost application and its frontmost window. It then calculates the appropriate position and size based on the command and arguments provided, and applies these changes to the window.
 
 ## Permissions
 
