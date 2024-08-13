@@ -436,6 +436,102 @@ func moveWindowToAdjacentDisplay(forward: Bool) {
     setWindowFrame(frontmostWindow, newFrame)
 }
 
+func listAvailableScreens() {
+    let screens = NSScreen.screens
+    print("Available screens:")
+    for (index, screen) in screens.enumerated() {
+        let screenNumber = index + 1
+        let frame = screen.frame
+        let visibleFrame = screen.visibleFrame
+        let scale = screen.backingScaleFactor
+        
+        print("Screen \(screenNumber):")
+        print("  Frame: \(frame)")
+        print("  Visible Frame: \(visibleFrame)")
+        print("  Scale Factor: \(scale)")
+        
+        if screen == NSScreen.main {
+            print("  (Main Display)")
+        }
+
+        let localizedName = screen.localizedName
+        print("  Name: \(localizedName)")
+
+        print() // Empty line for better readability
+    }
+}
+
+func applyPreset(monitor: Int? = nil, splitType: String, appConfigs: [(String, Double)]) {
+    let screens = NSScreen.screens
+    let targetScreen: NSScreen
+    if let monitor = monitor, monitor > 0 && monitor <= screens.count {
+        targetScreen = screens[monitor - 1]
+    } else {
+        targetScreen = screens[0] // Default to main screen
+    }
+    
+    let visibleFrame = targetScreen.visibleFrame
+    var currentPosition: CGFloat = 0.0
+
+    for (appName, percentage) in appConfigs {
+        print("Processing app: \(appName) with \(percentage)% of space")
+        
+        // Open the app or bring it to front if already running
+        let openTask = Process()
+        openTask.launchPath = "/usr/bin/open"
+        openTask.arguments = ["-a", appName]
+        openTask.launch()
+        openTask.waitUntilExit()
+        
+        // Wait for the app to launch or come to foreground
+        Thread.sleep(forTimeInterval: 1.0)
+        
+        // Get the frontmost window
+        guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+              let frontmostWindow = getFrontmostWindow(for: frontmostApp.processIdentifier) else {
+            print("Failed to get window for \(appName)")
+            continue
+        }
+        
+        // Check if the window is in full-screen mode and attempt to exit if it is
+        var isFullScreen: CFTypeRef?
+        AXUIElementCopyAttributeValue(frontmostWindow, "AXFullScreen" as CFString, &isFullScreen)
+        if let isFullScreen = isFullScreen as? Bool, isFullScreen {
+            print("App is in full-screen mode. Attempting to exit...")
+            AXUIElementSetAttributeValue(frontmostWindow, "AXFullScreen" as CFString, false as CFTypeRef)
+            Thread.sleep(forTimeInterval: 1.0) // Wait for full-screen exit animation
+        }
+        
+        // Calculate new frame
+        let newSize: CGSize
+        let newOrigin: CGPoint
+        if splitType.lowercased() == "horizontal" {
+            let width = visibleFrame.width * CGFloat(percentage / 100.0)
+            newSize = CGSize(width: width, height: visibleFrame.height)
+            newOrigin = CGPoint(x: visibleFrame.minX + currentPosition, y: visibleFrame.minY)
+            currentPosition += width
+        } else { // vertical
+            let height = visibleFrame.height * CGFloat(percentage / 100.0)
+            newSize = CGSize(width: visibleFrame.width, height: height)
+            newOrigin = CGPoint(x: visibleFrame.minX, y: visibleFrame.minY + currentPosition)
+            currentPosition += height
+        }
+        
+        let newFrame = CGRect(origin: newOrigin, size: newSize)
+        setWindowFrame(frontmostWindow, newFrame)
+        
+        // Verify if the window was resized and repositioned correctly
+        if let actualPosition = getWindowPosition(frontmostWindow),
+           let actualSize = getWindowSize(frontmostWindow) {
+            if actualPosition != newOrigin || actualSize != newSize {
+                print("Warning: Window for \(appName) may not have been positioned or sized correctly.")
+                print("Expected: origin \(newOrigin), size \(newSize)")
+                print("Actual: origin \(actualPosition), size \(actualSize)")
+            }
+        }
+    }
+}
+
 // MARK: - Main
 func printHelp() {
     print("""
@@ -469,6 +565,13 @@ func printHelp() {
       Custom:
         center-<percentage>  Center the window and resize it to the specified percentage of the screen size
 
+      Screen Information:
+        list-screens         Display information about all available screens
+
+      Presets:
+        preset [monitor] <split-type> <app1>:<percentage> <app2>:<percentage> ...
+                             Apply a preset configuration to open and arrange multiple applications
+
     Size specifications:
       width-<size>, height-<size>
         <size> can be specified as a percentage (e.g., 50%) or in pixels (e.g., 500px)
@@ -479,6 +582,9 @@ func printHelp() {
       mwm top-right width-1000px
       mwm left maximize-height
       mwm center-60
+      mwm list-screens
+      mwm preset horizontal Safari:50 Terminal:50
+      mwm preset 2 vertical "Visual Studio Code":70 Terminal:30
 
     Note: This tool requires accessibility permissions to function.
     """)
@@ -553,6 +659,33 @@ if CommandLine.arguments.count > 1 {
         moveWindowToNextDisplay()
     case "display-previous":
         moveWindowToPreviousDisplay()
+    case "list-screens":
+        listAvailableScreens()
+    case "preset":
+        if CommandLine.arguments.count < 5 {
+            print("Usage: mwm preset [monitor] <split-type> <app1>:<percentage> <app2>:<percentage> ...")
+            exit(1)
+        }
+        
+        var argIndex = 2
+        var monitor: Int? = nil
+        if let monitorArg = Int(CommandLine.arguments[argIndex]) {
+            monitor = monitorArg
+            argIndex += 1
+        }
+        
+        let splitType = CommandLine.arguments[argIndex]
+        argIndex += 1
+        
+        var appConfigs: [(String, Double)] = []
+        for arg in CommandLine.arguments[argIndex...] {
+            let parts = arg.split(separator: ":")
+            if parts.count == 2, let percentage = Double(parts[1]) {
+                appConfigs.append((String(parts[0]), percentage))
+            }
+        }
+        
+        applyPreset(monitor: monitor, splitType: splitType, appConfigs: appConfigs)    
     default:
         if command.starts(with: "center-") {
             positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)

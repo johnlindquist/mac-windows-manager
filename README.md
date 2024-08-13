@@ -25,6 +25,7 @@ The general syntax for using mwm is:
 mwm <command> [width-<size>] [height-<size>]
 ```
 
+
 ### Available Commands
 
 1. Positioning Commands:
@@ -53,6 +54,12 @@ mwm <command> [width-<size>] [height-<size>]
 5. Display Movement Commands:
    - `display-next`: Move the window to the next display, maintaining its relative position and size
    - `display-previous`: Move the window to the previous display, maintaining its relative position and size
+
+6. Screen Information:
+   - `list-screens`: Display information about all available screens
+
+7. Presets:
+   - `preset [monitor] <split-type> <app1>:<percentage> <app2>:<percentage> ...`: Apply a preset configuration to open and arrange multiple applications
 
 ### Size Specifications
 
@@ -96,9 +103,29 @@ If no size is specified, the current window size is maintained.
    ```
 
 6. Move the window to the previous display:
+
    ```
    mwm display-previous
    ```
+
+7. List all available screens:
+
+   ```
+   mwm list-screens
+   ```
+
+8. Apply a preset to open and arrange Safari and Terminal horizontally:
+
+   ```
+   mwm preset horizontal Safari:50 Terminal:50
+   ```
+
+9. Apply a preset on the second monitor to arrange Visual Studio Code and Terminal vertically:
+
+   ```
+   mwm preset 2 vertical "Visual Studio Code":70 Terminal:30
+   ```
+
 
 ### Help
 
