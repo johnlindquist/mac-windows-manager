@@ -196,14 +196,14 @@ func parsePercentage(from command: String) -> Int? {
 }
 
 // Replace setWindowPosition and setWindowSize with this new function
-func setWindowFrame(_ window: AXUIElement, _ frame: CGRect) {
+func setWindowFrame(_ window: AXUIElement, _ frame: CGRect, skipYFlipping: Bool = false) {
     print("Setting window frame to: \(frame)")
     
     let mainScreen = NSScreen.screens[0]
-    // Correct the Y-coordinate conversion
-    let flippedY = mainScreen.frame.height - frame.maxY
+    // Correct the Y-coordinate conversion if not skipping
+    let yPosition = skipYFlipping ? frame.minY : mainScreen.frame.height - frame.maxY
     
-    var position = CGPoint(x: frame.minX, y: flippedY)
+    var position = CGPoint(x: frame.minX, y: yPosition)
     var size = frame.size
     
     guard let positionValue = AXValueCreate(.cgPoint, &position),
@@ -297,7 +297,7 @@ func maximizeWindowWidth() {
 }
 
 // New movement functions
-func moveWindowUp() {
+func moveWindowDown() {
     guard let frontmostWindow = getFrontmostWindowElement(),
           let targetScreen = getTargetScreen(for: frontmostWindow),
           let currentPosition = getWindowPosition(frontmostWindow),
@@ -311,7 +311,7 @@ func moveWindowUp() {
     setWindowFrame(frontmostWindow, newFrame)
 }
 
-func moveWindowDown() {
+func moveWindowUp() {
     guard let frontmostWindow = getFrontmostWindowElement(),
           let targetScreen = getTargetScreen(for: frontmostWindow),
           let currentPosition = getWindowPosition(frontmostWindow),
@@ -319,7 +319,7 @@ func moveWindowDown() {
     
     let visibleFrame = targetScreen.visibleFrame
     let newFrame = CGRect(x: currentPosition.x,
-                          y: visibleFrame.maxY - currentSize.height,
+                          y: (visibleFrame.maxY - currentSize.height),
                           width: currentSize.width,
                           height: currentSize.height)
     setWindowFrame(frontmostWindow, newFrame)
@@ -336,7 +336,7 @@ func moveWindowLeft() {
                           y: currentPosition.y,
                           width: currentSize.width,
                           height: currentSize.height)
-    setWindowFrame(frontmostWindow, newFrame)
+    setWindowFrame(frontmostWindow, newFrame, skipYFlipping: true)
 }
 
 func moveWindowRight() {
@@ -350,7 +350,7 @@ func moveWindowRight() {
                           y: currentPosition.y,
                           width: currentSize.width,
                           height: currentSize.height)
-    setWindowFrame(frontmostWindow, newFrame)
+    setWindowFrame(frontmostWindow, newFrame, skipYFlipping: true)
 }
 
 // Helper functions

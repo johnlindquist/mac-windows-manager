@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "args": [],
+            "cwd": "${workspaceFolder:windows-demo}",
+            "name": "Debug mwm",
+            "program": "${workspaceFolder:windows-demo}/.build/debug/mwm",
+            "preLaunchTask": "swift: Build Debug mwm"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "args": [],
+            "cwd": "${workspaceFolder:windows-demo}",
+            "name": "Release mwm",
+            "program": "${workspaceFolder:windows-demo}/.build/release/mwm",
+            "preLaunchTask": "swift: Build Release mwm"
+        }
+    ]
+}
