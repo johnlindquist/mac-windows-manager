@@ -9,7 +9,7 @@ mwm is a powerful macOS command-line tool that allows you to precisely control w
 
 ## Installation
 
-You can download the latest release of mwm from the [Releases](https://github.com/yourusername/mwm/releases) page.
+You can download the latest release of mwm from the [Releases](https://github.com/johnlindquist/mac-windows-manager/releases) page.
 
 After downloading, you may need to make the file executable:
 
@@ -28,6 +28,7 @@ mwm <command> [width-<size>] [height-<size>]
 ### Available Commands
 
 1. Positioning Commands:
+
    - `center`: Center the window on the screen
    - `left`, `right`: Position the window on the left or right side of the screen
    - `top-left`, `top-right`, `bottom-left`, `bottom-right`: Position the window in the corners of the screen
@@ -35,15 +36,18 @@ mwm <command> [width-<size>] [height-<size>]
    - `left-third`, `center-third`, `right-third`: Divide the screen into thirds and position the window accordingly
 
 2. Sizing Commands:
+
    - `fullscreen`: Toggle fullscreen mode for the window
    - `maximize`: Maximize the window to fill the screen
    - `maximize-height`: Maximize the window's height while maintaining its width
    - `maximize-width`: Maximize the window's width while maintaining its height
 
 3. Movement Commands:
+
    - `move-up`, `move-down`, `move-left`, `move-right`: Move the window to the respective edge of the screen
 
 4. Custom Sizing:
+
    - `center-<percentage>`: Center the window and resize it to the specified percentage of the screen size
 
 5. Display Movement Commands:
@@ -62,26 +66,31 @@ If no size is specified, the current window size is maintained.
 ### Examples
 
 1. Center the window and set it to 80% of screen width and 70% of screen height:
+
    ```
    mwm center width-80% height-70%
    ```
 
 2. Move the window to the top-right corner and set its width to 1000 pixels:
+
    ```
    mwm top-right width-1000px
    ```
 
 3. Position the window on the left side of the screen and maximize its height:
+
    ```
    mwm left maximize-height
    ```
 
 4. Center the window and set its size to 60% of the screen:
+
    ```
    mwm center-60
    ```
 
 5. Move the window to the next display:
+
    ```
    mwm display-next
    ```
@@ -94,13 +103,17 @@ If no size is specified, the current window size is maintained.
 ### Help
 
 You can access the help information by running the tool with the `-h` or `--help` flag:
+
 ```
 mwm -h
 ```
+
 or
+
 ```
 mwm --help
 ```
+
 This will display the available commands, size specifications, and examples.
 
 ## How it works
