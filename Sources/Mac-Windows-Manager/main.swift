@@ -565,6 +565,13 @@ func printHelp() {
       Custom:
         center-<percentage>  Center the window and resize it to the specified percentage of the screen size
 
+      Screen Information:
+        list-screens         Display information about all available screens
+
+      Presets:
+        preset [monitor] <split-type> <app1>:<percentage> <app2>:<percentage> ...
+                             Apply a preset configuration to open and arrange multiple applications
+
     Size specifications:
       width-<size>, height-<size>
         <size> can be specified as a percentage (e.g., 50%) or in pixels (e.g., 500px)
@@ -575,6 +582,9 @@ func printHelp() {
       mwm top-right width-1000px
       mwm left maximize-height
       mwm center-60
+      mwm list-screens
+      mwm preset horizontal Safari:50 Terminal:50
+      mwm preset 2 vertical "Visual Studio Code":70 Terminal:30
 
     Note: This tool requires accessibility permissions to function.
     """)
