@@ -9,6 +9,17 @@ mwm is a powerful macOS command-line tool that allows you to precisely control w
 
 ## Installation
 
+### Using Homebrew (Recommended)
+
+```bash
+brew tap johnlindquist/mwm
+brew install mwm
+```
+
+To upgrade later: `brew upgrade mwm`
+
+### Manual Download
+
 You can download the latest release of mwm from the [Releases](https://github.com/johnlindquist/mac-windows-manager/releases) page.
 
 After downloading, you may need to make the file executable:

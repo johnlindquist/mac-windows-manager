@@ -103,9 +103,11 @@ jobs:
         xcrun notarytool info ${{ env.SUBMISSION_ID }} --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$TEAM_ID"
     
     - name: Generate SHA256
-      run: shasum -a 256 mwm > mwm.sha256
+      id: shasum
+      run: echo "sha256=$(shasum -a 256 mwm | awk '{ print $1 }')" >> $GITHUB_OUTPUT
     
     - name: Release
+      id: release
       uses: softprops/action-gh-release@v2
       with:
         files: |
@@ -113,3 +115,73 @@ jobs:
           mwm.sha256
           notarization_result.json
         generate_release_notes: true
+
+    - name: Set up Git Credentials for Tap Repo
+      run: |
+        git config --global user.name "${{ github.actor }}"
+        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+    - name: Check out Homebrew Tap Repository
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.repository_owner }}/homebrew-mwm
+        path: homebrew-tap
+        token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+    - name: Generate Homebrew Formula
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        SHA256="${{ steps.shasum.outputs.sha256 }}"
+        DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/mwm"
+        REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+        REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+
+        echo "Version: $VERSION"
+        echo "SHA256: $SHA256"
+        echo "Download URL: $DOWNLOAD_URL"
+        echo "Repo Owner: $REPO_OWNER"
+        echo "Repo Name: $REPO_NAME"
+
+        mkdir -p homebrew-tap/Formula
+
+        cat << EOF > homebrew-tap/Formula/mwm.rb
+        # typed: false
+        # frozen_string_literal: true
+
+        class Mwm < Formula
+          desc "Powerful macOS command-line tool for window management"
+          homepage "https://github.com/$REPO_OWNER/$REPO_NAME"
+          url "$DOWNLOAD_URL"
+          version "$VERSION"
+          sha256 "$SHA256"
+          license "MIT"
+
+          def install
+            bin.install "mwm"
+          end
+
+          test do
+            system "#{bin}/mwm", "--help"
+          end
+        end
+        EOF
+
+        echo "Generated homebrew-tap/Formula/mwm.rb"
+        cat homebrew-tap/Formula/mwm.rb
+
+    - name: Commit and Push Formula Update to Tap Repo
+      run: |
+        cd homebrew-tap
+        git add Formula/mwm.rb
+        if git diff --staged --quiet; then
+          echo "No changes to the formula file. Skipping commit."
+        else
+          git commit -m "Update mwm formula to version ${{ github.ref_name }}"
+          git push origin main
+          echo "Pushed updated formula to tap repository."
+        fi
+      env:
+        GIT_AUTHOR_NAME: ${{ github.actor }}
+        GIT_AUTHOR_EMAIL: ${{ github.actor }}@users.noreply.github.com
+        GIT_COMMITTER_NAME: ${{ github.actor }}
+        GIT_COMMITTER_EMAIL: ${{ github.actor }}@users.noreply.github.com
