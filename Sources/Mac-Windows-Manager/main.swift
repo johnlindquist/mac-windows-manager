@@ -340,17 +340,7 @@ func moveWindowLeft() {
 }
 
 func moveWindowRight() {
-    guard let frontmostWindow = getFrontmostWindowElement(),
-          let targetScreen = getTargetScreen(for: frontmostWindow),
-          let currentPosition = getWindowPosition(frontmostWindow),
-          let currentSize = getWindowSize(frontmostWindow) else { return }
-    
-    let visibleFrame = targetScreen.visibleFrame
-    let newFrame = CGRect(x: visibleFrame.maxX - currentSize.width,
-                          y: currentPosition.y,
-                          width: currentSize.width,
-                          height: currentSize.height)
-    setWindowFrame(frontmostWindow, newFrame, skipYFlipping: true)
+    positionFrontmostWindow(position: .right, widthSpec: "50%", heightSpec: "100%")
 }
 
 // Helper functions
@@ -532,7 +522,215 @@ func applyPreset(monitor: Int? = nil, splitType: String, appConfigs: [(String, D
     }
 }
 
-// MARK: - Main
+// Helper function to get the CGRect for a window element
+// Handles the coordinate system conversion (AX uses top-left origin, CGRect often uses bottom-left)
+func getFrame(for window: AXUIElement) -> CGRect? {
+    guard let position = getWindowPosition(window),
+          let size = getWindowSize(window) else {
+        print("Debug: Failed to get position or size for window in getFrame.")
+        return nil
+    }
+
+    // Convert AX Top-Left based Y coordinate to Bottom-Left based Y coordinate
+    // Assuming screen[0] is representative enough for height calculation,
+    // might need refinement if dealing with drastically different screen setups in edge cases.
+    let mainScreenHeight = NSScreen.screens.first?.frame.height ?? 0
+    let flippedY = mainScreenHeight - position.y - size.height
+
+    let frame = CGRect(x: position.x, y: flippedY, width: size.width, height: size.height)
+    print("Debug: Calculated frame for window: \(frame)")
+    return frame
+}
+
+// Function to get the frames of all other relevant windows on a specific screen
+func getOtherWindowFramesOnScreen(_ targetScreen: NSScreen, excluding activeWindow: AXUIElement) -> [CGRect] {
+    var windowFrames: [CGRect] = []
+    let runningApps = NSWorkspace.shared.runningApplications
+    let ownPID = NSWorkspace.shared.frontmostApplication?.processIdentifier // Get PID of the currently active app
+
+    print("Debug: Getting other windows on screen: \(targetScreen.localizedName)")
+
+    for app in runningApps {
+        // Skip the frontmost application itself
+        if app.processIdentifier == ownPID {
+            // print("Debug: Skipping self: \(app.localizedName ?? "Unknown")")
+            continue
+        }
+
+        // Skip apps that aren't regular foreground apps (like background agents)
+        if app.activationPolicy != .regular {
+             // print("Debug: Skipping non-regular app: \(app.localizedName ?? "Unknown")")
+            continue
+        }
+
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        var windowsRef: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef)
+
+        if error == .success, let windows = windowsRef as? [AXUIElement] {
+            for window in windows {
+                // Important: Skip the window if it's the same as the active one we're manipulating
+                if window == activeWindow {
+                    // print("Debug: Skipping the active window itself.")
+                    continue
+                }
+
+                // Check if minimized
+                var isMinimizedRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &isMinimizedRef)
+                if let isMinimized = isMinimizedRef as? Bool, isMinimized {
+                    // print("Debug: Skipping minimized window.")
+                    continue
+                }
+
+                // Attempt to get the frame
+                guard let frame = getFrame(for: window) else {
+                    // print("Debug: Skipping window - could not get frame.")
+                    continue
+                }
+
+                // Check if the window's center is on the target screen's *visible* frame
+                // Using visibleFrame avoids issues with menu bars/docks
+                let windowCenter = CGPoint(x: frame.midX, y: frame.midY)
+                if targetScreen.visibleFrame.contains(windowCenter) {
+                    print("Debug: Found relevant window for app '\(app.localizedName ?? "Unknown")' with frame: \(frame)")
+                    windowFrames.append(frame)
+                } else {
+                     // print("Debug: Skipping window not on target screen. Center: \(windowCenter), Screen Visible Frame: \(targetScreen.visibleFrame)")
+                }
+            }
+        } else if error != .success {
+             // print("Debug: Error getting windows for app \(app.localizedName ?? "Unknown"): \(error.rawValue)")
+        }
+    }
+    print("Debug: Found \(windowFrames.count) other relevant window frames on screen.")
+    return windowFrames
+}
+
+// Finds the X-coordinate of the leftmost edge among windows strictly to the right of the active frame
+func findNearestLeftEdge(to activeFrame: CGRect, in otherFrames: [CGRect]) -> CGFloat? {
+    var nearestX: CGFloat? = nil
+    let activeRightEdge = activeFrame.maxX
+
+    print("Debug: Finding nearest left edge to the right of \(activeRightEdge)")
+
+    for otherFrame in otherFrames {
+        let otherLeftEdge = otherFrame.minX
+        // Check if the other window is strictly to the right
+        if otherLeftEdge > activeRightEdge {
+            print("Debug: Considering window to the right with left edge at \(otherLeftEdge)")
+            // If this is the first one found, or it's closer than the current nearest
+            if nearestX == nil || otherLeftEdge < nearestX! {
+                nearestX = otherLeftEdge
+                print("Debug: Found new nearest left edge: \(nearestX!)")
+            }
+        }
+    }
+    if nearestX == nil { print("Debug: No window found strictly to the right.") }
+    return nearestX
+}
+
+// Finds the X-coordinate of the rightmost edge among windows strictly to the left of the active frame
+func findNearestRightEdge(to activeFrame: CGRect, in otherFrames: [CGRect]) -> CGFloat? {
+    var nearestX: CGFloat? = nil
+    let activeLeftEdge = activeFrame.minX
+
+    print("Debug: Finding nearest right edge to the left of \(activeLeftEdge)")
+
+    for otherFrame in otherFrames {
+        let otherRightEdge = otherFrame.maxX
+        // Check if the other window is strictly to the left
+        if otherRightEdge < activeLeftEdge {
+             print("Debug: Considering window to the left with right edge at \(otherRightEdge)")
+            // If this is the first one found, or it's closer than the current nearest
+            if nearestX == nil || otherRightEdge > nearestX! {
+                nearestX = otherRightEdge
+                print("Debug: Found new nearest right edge: \(nearestX!)")
+            }
+        }
+    }
+     if nearestX == nil { print("Debug: No window found strictly to the left.") }
+    return nearestX
+}
+
+// MARK: - Command Implementations
+
+// Performs the "snap right" action
+func performSnapRight() {
+    print("--- Starting performSnapRight ---")
+    guard requestAccessibilityPermission() else { return }
+
+    guard let activeWindow = getFrontmostWindowElement(),
+          let activeFrame = getFrame(for: activeWindow), // Use our new helper
+          let targetScreen = getTargetScreen(for: activeWindow) else {
+        print("Error: Could not get active window, its frame, or its screen.")
+        print("--- Aborted performSnapRight ---")
+        return
+    }
+
+    print("Debug: Active window frame: \(activeFrame)")
+    let otherFrames = getOtherWindowFramesOnScreen(targetScreen, excluding: activeWindow)
+
+    if let nearestLeftEdgeX = findNearestLeftEdge(to: activeFrame, in: otherFrames) {
+        let newWidth = nearestLeftEdgeX - activeFrame.minX
+        if newWidth <= 0 {
+             print("Error: Calculated negative or zero width (\(newWidth)). Aborting snap.")
+             print("--- Aborted performSnapRight ---")
+             return
+        }
+        // Construct the new frame using the original top-left Y (which getFrame converted for us)
+        // and the original height. setWindowFrame will handle the Y-flip back to AX coordinates.
+        let newFrame = CGRect(x: activeFrame.minX, y: activeFrame.minY, width: newWidth, height: activeFrame.height)
+
+        print("Debug: Snapping right. Current frame: \(activeFrame), Target left edge: \(nearestLeftEdgeX)")
+        print("Debug: Calculated New Frame (bottom-left origin): \(newFrame)")
+        setWindowFrame(activeWindow, newFrame)
+    } else {
+        print("No window found to the right to snap to.")
+    }
+     print("--- Finished performSnapRight ---")
+}
+
+// Performs the "snap left" action
+func performSnapLeft() {
+    print("--- Starting performSnapLeft ---")
+    guard requestAccessibilityPermission() else { return }
+
+     guard let activeWindow = getFrontmostWindowElement(),
+          let activeFrame = getFrame(for: activeWindow), // Use our new helper
+          let targetScreen = getTargetScreen(for: activeWindow) else {
+        print("Error: Could not get active window, its frame, or its screen.")
+        print("--- Aborted performSnapLeft ---")
+        return
+    }
+
+    print("Debug: Active window frame: \(activeFrame)")
+    let otherFrames = getOtherWindowFramesOnScreen(targetScreen, excluding: activeWindow)
+
+    if let nearestRightEdgeX = findNearestRightEdge(to: activeFrame, in: otherFrames) {
+        let newX = nearestRightEdgeX
+        let newWidth = activeFrame.maxX - newX
+        if newWidth <= 0 {
+             print("Error: Calculated negative or zero width (\(newWidth)). Aborting snap.")
+             print("--- Aborted performSnapLeft ---")
+             return
+        }
+        // Construct the new frame using the calculated left X, original top-left Y,
+        // new width, and original height. setWindowFrame will handle the Y-flip.
+        let newFrame = CGRect(x: newX, y: activeFrame.minY, width: newWidth, height: activeFrame.height)
+
+        print("Debug: Snapping left. Current frame: \(activeFrame), Target right edge: \(nearestRightEdgeX)")
+        print("Debug: Calculated New Frame (bottom-left origin): \(newFrame)")
+        setWindowFrame(activeWindow, newFrame)
+    } else {
+        print("No window found to the left to snap to.")
+    }
+     print("--- Finished performSnapLeft ---")
+}
+
+// MARK: - Display Management
+
+// MARK: - Help and Argument Parsing
 func printHelp() {
     print("""
     Usage: mwm <command> [width-<size>] [height-<size>]
@@ -540,53 +738,40 @@ func printHelp() {
     Available commands:
       Positioning:
         center               Center the window on the screen
-        left, right          Position the window on the left or right side of the screen
         top-left, top-right, bottom-left, bottom-right
-                             Position the window in the corners of the screen
-        center-left, center-top, center-right, center-bottom
-                             Position the window centered on each edge of the screen
+                             Position the window in the specified corner
+        left-half, right-half, top-half, bottom-half
+                             Position the window to occupy the specified half
         left-third, center-third, right-third
-                             Divide the screen into thirds and position the window accordingly
+                             Position the window to occupy the specified third horizontally
+        center-<percentage>% Center the window with the specified percentage of screen size
 
       Sizing:
         fullscreen           Toggle fullscreen mode for the window
-        maximize             Maximize the window to fill the screen
-        maximize-height      Maximize the window's height while maintaining its width
-        maximize-width       Maximize the window's width while maintaining its height
+        maximize             Maximize the window (fill screen vertically)
+        maximize-height      Maximize the window height only
+        maximize-width       Maximize the window width only
 
       Movement:
         move-up, move-down, move-left, move-right
                              Move the window to the respective edge of the screen
 
+      Snapping:
+        snap-left            Resize window's left edge to nearest window on the left
+        snap-right           Resize window's right edge to nearest window on the right
+
       Display Movement:
         display-next         Move the window to the next display
         display-previous     Move the window to the previous display
 
-      Custom:
-        center-<percentage>  Center the window and resize it to the specified percentage of the screen size
+      Misc:
+        help                 Show this help message
+        version              Show the version number
 
-      Screen Information:
-        list-screens         Display information about all available screens
-
-      Presets:
-        preset [monitor] <split-type> <app1>:<percentage> <app2>:<percentage> ...
-                             Apply a preset configuration to open and arrange multiple applications
-
-    Size specifications:
-      width-<size>, height-<size>
-        <size> can be specified as a percentage (e.g., 50%) or in pixels (e.g., 500px)
-        If not specified, the current window size is maintained.
-
-    Examples:
-      mwm center width-80% height-70%
-      mwm top-right width-1000px
-      mwm left maximize-height
-      mwm center-60
-      mwm list-screens
-      mwm preset horizontal Safari:50 Terminal:50
-      mwm preset 2 vertical "Visual Studio Code":70 Terminal:30
-
-    Note: This tool requires accessibility permissions to function.
+    Size Specifications (for 'center' and positioning commands):
+      width-<value>        Set the width (e.g., width-50%, width-800px)
+      height-<value>       Set the height (e.g., height-75%, height-600px)
+      If not specified, the current size is maintained.
     """)
 }
 
@@ -629,16 +814,20 @@ if CommandLine.arguments.count > 1 {
         positionFrontmostWindow(position: .bottomLeft, widthSpec: widthSpec, heightSpec: heightSpec)
     case "bottom-right":
         positionFrontmostWindow(position: .bottomRight, widthSpec: widthSpec, heightSpec: heightSpec)
-    case "center-left":
-        positionFrontmostWindow(position: .centerLeft, widthSpec: widthSpec, heightSpec: heightSpec)
-    case "center-top":
-        positionFrontmostWindow(position: .centerTop, widthSpec: widthSpec, heightSpec: heightSpec)
-    case "center-right":
-        positionFrontmostWindow(position: .centerRight, widthSpec: widthSpec, heightSpec: heightSpec)
-    case "center-bottom":
-        positionFrontmostWindow(position: .centerBottom, widthSpec: widthSpec, heightSpec: heightSpec)
-    case "left-third", "center-third", "right-third":
-        positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)
+    case "left-half":
+        positionFrontmostWindow(position: .centerLeft, widthSpec: nil, heightSpec: nil)
+    case "right-half":
+        positionFrontmostWindow(position: .centerRight, widthSpec: nil, heightSpec: nil)
+    case "top-half":
+        positionFrontmostWindow(position: .centerTop, widthSpec: nil, heightSpec: nil)
+    case "bottom-half":
+        positionFrontmostWindow(position: .centerBottom, widthSpec: nil, heightSpec: nil)
+    case "left-third":
+        positionFrontmostWindow(position: .custom("left-third"), widthSpec: nil, heightSpec: nil)
+    case "center-third":
+        positionFrontmostWindow(position: .custom("center-third"), widthSpec: nil, heightSpec: nil)
+    case "right-third":
+        positionFrontmostWindow(position: .custom("right-third"), widthSpec: nil, heightSpec: nil)
     case "fullscreen":
         toggleFullscreen()
     case "maximize":
@@ -655,6 +844,10 @@ if CommandLine.arguments.count > 1 {
         moveWindowLeft()
     case "move-right":
         moveWindowRight()
+    case "snap-left":
+        performSnapLeft()
+    case "snap-right":
+        performSnapRight()
     case "display-next":
         moveWindowToNextDisplay()
     case "display-previous":
