@@ -353,26 +353,72 @@ func getFrontmostWindowElement() -> AXUIElement? {
     return frontmostWindow
 }
 
-// Update this function to use visibleFrame instead of frame
+// Helper function to calculate the squared distance between two points
+func distanceSq(p1: CGPoint, p2: CGPoint) -> CGFloat {
+    let dx = p1.x - p2.x
+    let dy = p1.y - p2.y
+    return dx * dx + dy * dy
+}
+
+// Helper function to calculate the shortest squared distance from a point to a rectangle
+func distanceSqToRect(point: CGPoint, rect: CGRect) -> CGFloat {
+    let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
+    let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
+    return dx * dx + dy * dy
+}
+
+// Updated function to find the target screen, with fallback to nearest screen
 func getTargetScreen(for window: AXUIElement) -> NSScreen? {
-    guard let windowPosition = getWindowPosition(window) else {
-        print("Unable to get window position.")
+    guard let windowPosition = getWindowPosition(window), // AX coords (top-left origin)
+          let windowSize = getWindowSize(window) else {
+        print("Error: Unable to get window position or size.")
         return nil
     }
-    
-    let mainScreenHeight = NSScreen.screens[0].visibleFrame.height
-    let screenPosition = CGPoint(x: windowPosition.x, y: mainScreenHeight - windowPosition.y)
-    
-    guard let targetScreen = NSScreen.screens.first(where: { $0.visibleFrame.contains(screenPosition) }) else {
-        print("Unable to determine the screen with the frontmost window.")
-        print("Available screens:")
-        for (index, screen) in NSScreen.screens.enumerated() {
-            print("Screen \(index): \(screen.visibleFrame)")
+
+    // Calculate window center in AX coordinates
+    let windowCenterAX = CGPoint(x: windowPosition.x + windowSize.width / 2,
+                                 y: windowPosition.y + windowSize.height / 2)
+
+    // Convert window center to NS coordinates (bottom-left origin) for screen comparison
+    // We need *a* screen's height for conversion; main screen is usually sufficient reference
+    // unless coordinate systems are wildly different (unlikely for standard setups).
+    let mainScreenHeight = NSScreen.screens.first?.frame.height ?? 0
+    let windowCenterNS = CGPoint(x: windowCenterAX.x,
+                                 y: mainScreenHeight - windowCenterAX.y)
+
+    print("Debug: Window AX Position: \(windowPosition), AX Center: \(windowCenterAX), NS Center: \(windowCenterNS)")
+
+    // First attempt: Find screen containing the window's center point (NS coords)
+    if let containingScreen = NSScreen.screens.first(where: { $0.frame.contains(windowCenterNS) }) {
+         print("Debug: Found screen containing window center directly: \(containingScreen.localizedName)")
+         return containingScreen
+    }
+
+    // Fallback: Find the closest screen if the center isn't strictly inside any screen frame
+    print("Debug: Window center not directly inside any screen frame. Falling back to nearest screen calculation.")
+
+    var closestScreen: NSScreen? = nil
+    var minDistanceSq: CGFloat = .greatestFiniteMagnitude
+
+    for screen in NSScreen.screens {
+        // Calculate distance from window center (NS coords) to the screen's frame rectangle
+        let distSq = distanceSqToRect(point: windowCenterNS, rect: screen.frame)
+        print("Debug: DistanceSq to screen '\(screen.localizedName)' (\(screen.frame)): \(distSq)")
+
+        if distSq < minDistanceSq {
+            minDistanceSq = distSq
+            closestScreen = screen
+             print("Debug: New closest screen found: \(screen.localizedName) (DistanceSq: \(minDistanceSq))")
         }
-        return nil
     }
-    
-    return targetScreen
+
+    if let foundScreen = closestScreen {
+         print("Debug: Determined closest screen via fallback: \(foundScreen.localizedName)")
+    } else {
+         print("Error: Could not determine closest screen. No screens available?")
+    }
+
+    return closestScreen
 }
 
 func moveWindowToNextDisplay() {
