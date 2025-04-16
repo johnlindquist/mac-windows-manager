@@ -27,3 +27,31 @@ alwaysApply: true
 *   Increment version based on changes (e.g., minor for features: `v0.1.0` -> `v0.2.0`).
 *   Create local tag: `git tag v0.2.0`
 *   Push tag to trigger CI: `git push origin v0.2.0`
+
+# Nearest Screen Fallback (`getTargetScreen`)
+
+## Core Logic
+Use window center (AX coords) for detection.
+Convert center to NS coords (`mainScreenHeight - centerAX.y`).
+Check `screen.frame.contains(centerNS)` first.
+Fallback: Find min `distanceSqToRect(point: centerNS, rect: screen.frame)`.
+Return closest `NSScreen`.
+
+## Workflow
+Use feature branches (`git checkout -b feat/...`).
+Verify changes (`swift build`, manual tests).
+Commit changes (`git add`, `git commit`).
+Switch to target branch (`git checkout main`).
+Merge (`git merge --no-ff feat/... | cat`).
+PUSH (`git push origin main`).
+
+## Merge Conflict Resolution (Local Changes)
+Identify conflict: `git merge ...` fails citing local changes.
+Inspect changes: `git status | cat`, `git diff --staged | cat`.
+If staged changes are identical: Discard (`git restore --staged <file>`, `git checkout -- <file>`).
+If staged changes are needed: Commit (`git commit -m "..."`).
+Retry merge.
+
+## Git Commands
+Use `| cat` for commands potentially needing interaction (e.g., `git merge`, `git status`).
+Check current branch: `git branch --show-current | cat`.
