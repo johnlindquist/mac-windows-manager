@@ -1,0 +1,29 @@
+---
+description: Consider these lessons learned first before making changes to avoid mistakes
+globs: 
+alwaysApply: true
+---
+
+# Swift Window Snapping (`snap-left`/`snap-right`)
+
+## Core Logic
+*   `getFrame(for:)`: Get `CGRect` (handles Y-flip).
+*   `getOtherWindowFramesOnScreen(_:excluding:)`: Find other visible, non-minimized windows on the target screen.
+*   `findNearestLeftEdge(to:in:)`: Find X of nearest left edge *right* of the active window.
+*   `findNearestRightEdge(to:in:)`: Find X of nearest right edge *left* of the active window.
+*   `performSnapLeft()`/`performSnapRight()`: Orchestrate getting frames, finding neighbors, calculating new frame, and calling `setWindowFrame`.
+
+## Integration
+*   Add new cases (`"snap-left"`, `"snap-right"`) to the main command `switch`.
+*   Update `printHelp()` with new command descriptions.
+
+## Build & Test
+*   Build: `swift build`
+*   Executable Path: `./.build/debug/mwm`
+*   Test: `./.build/debug/mwm snap-left` / `./.build/debug/mwm snap-right`
+
+## Git Tagging & CI Trigger
+*   Check latest tag: `git tag --sort=v:refname | cat`
+*   Increment version based on changes (e.g., minor for features: `v0.1.0` -> `v0.2.0`).
+*   Create local tag: `git tag v0.2.0`
+*   Push tag to trigger CI: `git push origin v0.2.0`
