@@ -196,14 +196,14 @@ func parsePercentage(from command: String) -> Int? {
 }
 
 // Replace setWindowPosition and setWindowSize with this new function
-func setWindowFrame(_ window: AXUIElement, _ frame: CGRect, skipYFlipping: Bool = false) {
+func setWindowFrame(_ window: AXUIElement, _ frame: CGRect) {
     print("Setting window frame to: \(frame)")
     
     let mainScreen = NSScreen.screens[0]
-    // Correct the Y-coordinate conversion if not skipping
-    let yPosition = skipYFlipping ? frame.minY : mainScreen.frame.height - frame.maxY
+    // Always flip Y coordinate from macOS coordinate system
+    let flippedY = mainScreen.frame.height - frame.maxY
     
-    var position = CGPoint(x: frame.minX, y: yPosition)
+    var position = CGPoint(x: frame.minX, y: flippedY)
     var size = frame.size
     
     guard let positionValue = AXValueCreate(.cgPoint, &position),
@@ -336,11 +336,21 @@ func moveWindowLeft() {
                           y: currentPosition.y,
                           width: currentSize.width,
                           height: currentSize.height)
-    setWindowFrame(frontmostWindow, newFrame, skipYFlipping: true)
+    setWindowFrame(frontmostWindow, newFrame)
 }
 
 func moveWindowRight() {
-    positionFrontmostWindow(position: .right, widthSpec: "50%", heightSpec: "100%")
+    guard let frontmostWindow = getFrontmostWindowElement(),
+          let targetScreen = getTargetScreen(for: frontmostWindow),
+          let currentPosition = getWindowPosition(frontmostWindow),
+          let currentSize = getWindowSize(frontmostWindow) else { return }
+    
+    let visibleFrame = targetScreen.visibleFrame
+    let newFrame = CGRect(x: visibleFrame.maxX - currentSize.width,
+                          y: currentPosition.y,
+                          width: currentSize.width,
+                          height: currentSize.height)
+    setWindowFrame(frontmostWindow, newFrame)
 }
 
 // Helper functions
@@ -774,6 +784,363 @@ func performSnapLeft() {
      print("--- Finished performSnapLeft ---")
 }
 
+// MARK: - Window enumeration for organize commands
+
+struct WindowInfo {
+    let app: NSRunningApplication
+    let element: AXUIElement
+    let frame: CGRect
+}
+
+func getWindowsOnScreen(_ targetScreen: NSScreen, includeActive: Bool = true) -> [WindowInfo] {
+    var results: [WindowInfo] = []
+    let running = NSWorkspace.shared.runningApplications
+    let ownPID = includeActive ? nil : NSWorkspace.shared.frontmostApplication?.processIdentifier
+
+    for app in running where app.activationPolicy == .regular {
+        if let own = ownPID, app.processIdentifier == own { continue }
+        let appEl = AXUIElementCreateApplication(app.processIdentifier)
+        var windowsRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(appEl, kAXWindowsAttribute as CFString, &windowsRef) != .success { continue }
+        guard let windows = windowsRef as? [AXUIElement] else { continue }
+
+        for win in windows {
+            var minimizedRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(win, kAXMinimizedAttribute as CFString, &minimizedRef)
+            if let isMin = minimizedRef as? Bool, isMin { continue }
+            guard let frame = getFrame(for: win) else { continue }
+            let center = CGPoint(x: frame.midX, y: frame.midY)
+            if targetScreen.visibleFrame.contains(center) {
+                results.append(WindowInfo(app: app, element: win, frame: frame))
+            }
+        }
+    }
+
+    // Optionally include the frontmost window last (so it lands top-left in grid/cascade)
+    if includeActive, let active = getFrontmostWindowElement(),
+       let frame = getFrame(for: active),
+       let app = NSWorkspace.shared.frontmostApplication,
+       let screen = getTargetScreen(for: active),
+       screen == targetScreen {
+        results.append(WindowInfo(app: app, element: active, frame: frame))
+    }
+    return results
+}
+
+// MARK: - Arrange helpers
+
+func arrangeGrid(cols: Int, rows: Int, gap: CGFloat = 0) {
+    guard let active = getFrontmostWindowElement(),
+          let screen = getTargetScreen(for: active) else { return }
+    let visible = screen.visibleFrame
+    let windows = getWindowsOnScreen(screen, includeActive: true)
+    if windows.isEmpty { return }
+
+    let cellW = visible.width / CGFloat(cols)
+    let cellH = visible.height / CGFloat(rows)
+
+    for (i, info) in windows.enumerated() {
+        if i >= cols * rows { break }
+        let r = i / cols
+        let c = i % cols
+        var rect = CGRect(
+            x: visible.minX + CGFloat(c) * cellW,
+            y: visible.minY + CGFloat(r) * cellH,
+            width: cellW,
+            height: cellH
+        )
+        if gap > 0 { rect = rect.insetBy(dx: gap/2, dy: gap/2) }
+        setWindowFrame(info.element, rect)
+    }
+}
+
+func arrangeCascade(offset: CGFloat = 32) {
+    guard let active = getFrontmostWindowElement(),
+          let screen = getTargetScreen(for: active) else { return }
+    let visible = screen.visibleFrame
+    let windows = getWindowsOnScreen(screen, includeActive: true)
+    if windows.isEmpty { return }
+
+    let baseW = visible.width * 0.66
+    let baseH = visible.height * 0.66
+    for (i, info) in windows.enumerated() {
+        var rect = CGRect(
+            x: visible.minX + CGFloat(i) * offset,
+            y: visible.minY + CGFloat(i) * offset,
+            width: baseW,
+            height: baseH
+        )
+        // keep inside bounds
+        rect.origin.x = min(rect.origin.x, visible.maxX - baseW)
+        rect.origin.y = min(rect.origin.y, visible.maxY - baseH)
+        setWindowFrame(info.element, rect)
+    }
+}
+
+func arrangeSlices(orientation: String, count: Int, gap: CGFloat = 0) {
+    guard let active = getFrontmostWindowElement(),
+          let screen = getTargetScreen(for: active) else { return }
+    let visible = screen.visibleFrame
+    let windows = getWindowsOnScreen(screen, includeActive: true)
+    if windows.isEmpty { return }
+
+    for (i, info) in windows.enumerated() {
+        if i >= count { break }
+        var rect: CGRect
+        if orientation == "columns" {
+            let w = visible.width / CGFloat(count)
+            rect = CGRect(x: visible.minX + CGFloat(i)*w, y: visible.minY, width: w, height: visible.height)
+        } else {
+            let h = visible.height / CGFloat(count)
+            rect = CGRect(x: visible.minX, y: visible.minY + CGFloat(i)*h, width: visible.width, height: h)
+        }
+        if gap > 0 { rect = rect.insetBy(dx: gap/2, dy: gap/2) }
+        setWindowFrame(info.element, rect)
+    }
+}
+
+// MARK: - Layouts
+
+struct WindowLayout: Codable {
+    let bundleId: String
+    let title: String
+    let screenIndex: Int
+    let xRel: Double, yRel: Double, wRel: Double, hRel: Double
+}
+
+struct SavedLayout: Codable {
+    let name: String
+    let createdAt: Date
+    let windows: [WindowLayout]
+}
+
+func layoutsDir() -> URL {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    return home.appendingPathComponent(".mwm/layouts", isDirectory: true)
+}
+
+func saveLayout(name: String) {
+    guard let active = getFrontmostWindowElement(),
+          let screen = getTargetScreen(for: active) else { return }
+    let visible = screen.visibleFrame
+    var records: [WindowLayout] = []
+    let windows = getWindowsOnScreen(screen, includeActive: true)
+
+    for info in windows {
+        var titleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(info.element, kAXTitleAttribute as CFString, &titleRef)
+        let title = (titleRef as? String) ?? ""
+        let bundleId = info.app.bundleIdentifier ?? info.app.localizedName ?? "unknown"
+        let screenIndex = NSScreen.screens.firstIndex(of: screen) ?? 0
+        let xRel = Double((info.frame.minX - visible.minX) / visible.width)
+        let yRel = Double((info.frame.minY - visible.minY) / visible.height)
+        let wRel = Double(info.frame.width / visible.width)
+        let hRel = Double(info.frame.height / visible.height)
+        records.append(WindowLayout(bundleId: bundleId, title: title, screenIndex: screenIndex,
+                                    xRel: xRel, yRel: yRel, wRel: wRel, hRel: hRel))
+    }
+
+    do {
+        try FileManager.default.createDirectory(at: layoutsDir(), withIntermediateDirectories: true)
+        let layout = SavedLayout(name: name, createdAt: Date(), windows: records)
+        let data = try JSONEncoder().encode(layout)
+        let url = layoutsDir().appendingPathComponent("\(name).json")
+        try data.write(to: url)
+        print("Saved layout '\(name)' to \(url.path)")
+    } catch {
+        print("Failed to save layout: \(error)")
+    }
+}
+
+func restoreLayout(name: String) {
+    do {
+        let url = layoutsDir().appendingPathComponent("\(name).json")
+        let data = try Data(contentsOf: url)
+        let layout = try JSONDecoder().decode(SavedLayout.self, from: data)
+
+        // Build live window lookup table
+        var live: [(AXUIElement, NSRunningApplication, NSScreen)] = []
+        for screen in NSScreen.screens {
+            for info in getWindowsOnScreen(screen, includeActive: true) {
+                live.append((info.element, info.app, screen))
+            }
+        }
+
+        for w in layout.windows {
+            let targetScreen = NSScreen.screens.indices.contains(w.screenIndex) ? NSScreen.screens[w.screenIndex] : NSScreen.screens[0]
+            let vis = targetScreen.visibleFrame
+            let rect = CGRect(
+                x: vis.minX + CGFloat(w.xRel) * vis.width,
+                y: vis.minY + CGFloat(w.yRel) * vis.height,
+                width: CGFloat(w.wRel) * vis.width,
+                height: CGFloat(w.hRel) * vis.height
+            )
+            // Find best match (bundle id + fuzzy title)
+            if let (el, _, _) = live.first(where: { elem, app, _ in
+                let matchBundle = (app.bundleIdentifier ?? app.localizedName ?? "") == w.bundleId
+                var titleRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(elem, kAXTitleAttribute as CFString, &titleRef)
+                let t = (titleRef as? String) ?? ""
+                return matchBundle && (w.title.isEmpty || t.contains(w.title.prefix(min(12, w.title.count))))
+            }) {
+                setWindowFrame(el, rect)
+            }
+        }
+    } catch {
+        print("Failed to restore layout '\(name)': \(error)")
+    }
+}
+
+// MARK: - Vertical Snapping
+
+func findNearestTopEdge(to activeFrame: CGRect, in otherFrames: [CGRect]) -> CGFloat? {
+    var nearestY: CGFloat?
+    let activeTop = activeFrame.maxY
+    for f in otherFrames {
+        let otherBottom = f.minY
+        if otherBottom > activeTop {
+            if nearestY == nil || otherBottom < nearestY! { nearestY = otherBottom }
+        }
+    }
+    return nearestY
+}
+
+func findNearestBottomEdge(to activeFrame: CGRect, in otherFrames: [CGRect]) -> CGFloat? {
+    var nearestY: CGFloat?
+    let activeBottom = activeFrame.minY
+    for f in otherFrames {
+        let otherTop = f.maxY
+        if otherTop < activeBottom {
+            if nearestY == nil || otherTop > nearestY! { nearestY = otherTop }
+        }
+    }
+    return nearestY
+}
+
+func performSnapUp() {
+    guard requestAccessibilityPermission() else { return }
+    guard let active = getFrontmostWindowElement(),
+          let frame = getFrame(for: active),
+          let screen = getTargetScreen(for: active) else { return }
+    let others = getOtherWindowFramesOnScreen(screen, excluding: active)
+    if let nearest = findNearestTopEdge(to: frame, in: others) {
+        let newH = nearest - frame.minY
+        if newH > 0 {
+            let newFrame = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: newH)
+            setWindowFrame(active, newFrame)
+        }
+    }
+}
+
+func performSnapDown() {
+    guard requestAccessibilityPermission() else { return }
+    guard let active = getFrontmostWindowElement(),
+          let frame = getFrame(for: active),
+          let screen = getTargetScreen(for: active) else { return }
+    let others = getOtherWindowFramesOnScreen(screen, excluding: active)
+    if let nearest = findNearestBottomEdge(to: frame, in: others) {
+        let newY = nearest
+        let newH = frame.maxY - newY
+        if newH > 0 {
+            let newFrame = CGRect(x: frame.minX, y: newY, width: frame.width, height: newH)
+            setWindowFrame(active, newFrame)
+        }
+    }
+}
+
+// MARK: - Nudge and Grow
+
+func nudge(dx: CGFloat, dy: CGFloat) {
+    guard let w = getFrontmostWindowElement(),
+          let pos = getWindowPosition(w),
+          let size = getWindowSize(w),
+          let screen = getTargetScreen(for: w) else { return }
+    let vis = screen.visibleFrame
+    var rect = CGRect(x: pos.x + dx, y: pos.y + dy, width: size.width, height: size.height)
+    rect.origin.x = max(vis.minX, min(rect.origin.x, vis.maxX - rect.width))
+    rect.origin.y = max(vis.minY, min(rect.origin.y, vis.maxY - rect.height))
+    setWindowFrame(w, rect)
+}
+
+func grow(width dw: CGFloat, height dh: CGFloat) {
+    guard let w = getFrontmostWindowElement(),
+          let pos = getWindowPosition(w),
+          let size = getWindowSize(w),
+          let screen = getTargetScreen(for: w) else { return }
+    let vis = screen.visibleFrame
+    var rect = CGRect(x: pos.x, y: pos.y, width: max(50, size.width + dw), height: max(50, size.height + dh))
+    rect.size.width = min(rect.size.width, vis.width)
+    rect.size.height = min(rect.size.height, vis.height)
+    setWindowFrame(w, rect)
+}
+
+// MARK: - Display Under Mouse
+
+func displayUnderMouse() {
+    guard let w = getFrontmostWindowElement(),
+          let current = getTargetScreen(for: w),
+          let pos = getWindowPosition(w),
+          let size = getWindowSize(w) else { return }
+    let mouse = NSEvent.mouseLocation
+    let target = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? current
+    let curVis = current.visibleFrame
+    let tgtVis = target.visibleFrame
+    let relX = (pos.x - curVis.minX) / curVis.width
+    let relY = (pos.y - curVis.minY) / curVis.height
+    let relW = min(1.0, size.width / curVis.width)
+    let relH = min(1.0, size.height / curVis.height)
+    let newRect = CGRect(
+        x: tgtVis.minX + relX * tgtVis.width,
+        y: tgtVis.minY + relY * tgtVis.height,
+        width: relW * tgtVis.width,
+        height: relH * tgtVis.height
+    )
+    setWindowFrame(w, newRect)
+}
+
+// MARK: - List Windows
+
+struct WindowRow: Codable {
+    let app: String
+    let bundleId: String
+    let title: String
+    let screen: Int
+    let x: Int
+    let y: Int
+    let w: Int
+    let h: Int
+}
+
+func listWindows(json: Bool) {
+    var rows: [WindowRow] = []
+    for (si, screen) in NSScreen.screens.enumerated() {
+        for info in getWindowsOnScreen(screen, includeActive: true) {
+            var tRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(info.element, kAXTitleAttribute as CFString, &tRef)
+            let t = (tRef as? String) ?? ""
+            rows.append(WindowRow(
+                app: info.app.localizedName ?? "Unknown",
+                bundleId: info.app.bundleIdentifier ?? "",
+                title: t,
+                screen: si,
+                x: Int(info.frame.minX), y: Int(info.frame.minY),
+                w: Int(info.frame.width), h: Int(info.frame.height)
+            ))
+        }
+    }
+    if json {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? enc.encode(rows), let s = String(data: data, encoding: .utf8) {
+            print(s)
+        }
+    } else {
+        for r in rows {
+            print("[S\(r.screen)] \(r.app) — \(r.title) @ (\(r.x),\(r.y)) \(r.w)x\(r.h)")
+        }
+    }
+}
+
 // MARK: - Display Management
 
 // MARK: - Help and Argument Parsing
@@ -805,14 +1172,35 @@ func printHelp() {
       Snapping:
         snap-left            Resize window's left edge to nearest window on the left
         snap-right           Resize window's right edge to nearest window on the right
+        snap-up              Resize window's top edge to nearest window above
+        snap-down            Resize window's bottom edge to nearest window below
+
+      Organize:
+        arrange grid <COLS>x<ROWS> [gap-<px>]   Tile all windows on the screen
+        arrange cascade [offset-<px>]           Fan out windows
+        arrange columns <N> [gap-<px>]          Equal-width columns
+        arrange rows <N> [gap-<px>]             Equal-height rows
+
+      Layouts:
+        layout save <name>                      Save current layout (relative)
+        layout restore <name>                   Restore layout (resolution-proof)
+
+      Fine Control:
+        nudge <left|right|up|down> <px>        Move window by pixels without resizing
+        grow <width|height> <±px>               Resize window by pixels
 
       Display Movement:
         display-next         Move the window to the next display
         display-previous     Move the window to the previous display
+        display-under-mouse  Move window to display under cursor
+
+      Information:
+        list-screens         List all available screens
+        list-windows [--json]   List all visible windows
 
       Misc:
         help                 Show this help message
-        version              Show the version number
+        --version, version   Show the version number
 
     Size Specifications (for 'center' and positioning commands):
       width-<value>        Set the width (e.g., width-50%, width-800px)
@@ -846,6 +1234,9 @@ if CommandLine.arguments.count > 1 {
     print("Parsed width spec: \(widthSpec ?? "nil"), height spec: \(heightSpec ?? "nil")")
     
     switch command {
+    case "--version", "version":
+        print("mwm 1.0.0")
+        exit(0)
     case "center":
         centerFrontmostWindow(widthSpec: widthSpec, heightSpec: heightSpec)
     case "left":
@@ -861,13 +1252,13 @@ if CommandLine.arguments.count > 1 {
     case "bottom-right":
         positionFrontmostWindow(position: .bottomRight, widthSpec: widthSpec, heightSpec: heightSpec)
     case "left-half":
-        positionFrontmostWindow(position: .centerLeft, widthSpec: nil, heightSpec: nil)
+        positionFrontmostWindow(position: .left, widthSpec: "50%", heightSpec: "100%")
     case "right-half":
-        positionFrontmostWindow(position: .centerRight, widthSpec: nil, heightSpec: nil)
+        positionFrontmostWindow(position: .right, widthSpec: "50%", heightSpec: "100%")
     case "top-half":
-        positionFrontmostWindow(position: .centerTop, widthSpec: nil, heightSpec: nil)
+        positionFrontmostWindow(position: .centerTop, widthSpec: "100%", heightSpec: "50%")
     case "bottom-half":
-        positionFrontmostWindow(position: .centerBottom, widthSpec: nil, heightSpec: nil)
+        positionFrontmostWindow(position: .centerBottom, widthSpec: "100%", heightSpec: "50%")
     case "left-third":
         positionFrontmostWindow(position: .custom("left-third"), widthSpec: nil, heightSpec: nil)
     case "center-third":
@@ -894,12 +1285,21 @@ if CommandLine.arguments.count > 1 {
         performSnapLeft()
     case "snap-right":
         performSnapRight()
+    case "snap-up":
+        performSnapUp()
+    case "snap-down":
+        performSnapDown()
     case "display-next":
         moveWindowToNextDisplay()
     case "display-previous":
         moveWindowToPreviousDisplay()
+    case "display-under-mouse":
+        displayUnderMouse()
     case "list-screens":
         listAvailableScreens()
+    case "list-windows":
+        let json = CommandLine.arguments.dropFirst(2).contains("--json")
+        listWindows(json: json)
     case "preset":
         if CommandLine.arguments.count < 5 {
             print("Usage: mwm preset [monitor] <split-type> <app1>:<percentage> <app2>:<percentage> ...")
@@ -924,7 +1324,51 @@ if CommandLine.arguments.count > 1 {
             }
         }
         
-        applyPreset(monitor: monitor, splitType: splitType, appConfigs: appConfigs)    
+        applyPreset(monitor: monitor, splitType: splitType, appConfigs: appConfigs)
+    case "arrange":
+        let args = Array(CommandLine.arguments.dropFirst(2))
+        guard let mode = args.first else { print("Usage: mwm arrange <grid|cascade|columns|rows> ..."); break }
+        if mode == "grid", args.count >= 2, let xIndex = args[1].firstIndex(of: "x") {
+            let cols = Int(args[1][..<xIndex]) ?? 2
+            let rows = Int(args[1][args[1].index(after: xIndex)...]) ?? 2
+            let gapArg = args.first(where: { $0.hasPrefix("gap-") })?.replacingOccurrences(of: "gap-", with: "").replacingOccurrences(of: "px", with: "")
+            let gap = CGFloat(Double(gapArg ?? "0") ?? 0)
+            arrangeGrid(cols: cols, rows: rows, gap: gap)
+        } else if mode == "cascade" {
+            let offArg = args.first(where: { $0.hasPrefix("offset-") })?.replacingOccurrences(of: "offset-", with: "").replacingOccurrences(of: "px", with: "")
+            let offset = CGFloat(Double(offArg ?? "32") ?? 32)
+            arrangeCascade(offset: offset)
+        } else if (mode == "columns" || mode == "rows"), args.count >= 2, let n = Int(args[1]) {
+            let gapArg = args.first(where: { $0.hasPrefix("gap-") })?.replacingOccurrences(of: "gap-", with: "").replacingOccurrences(of: "px", with: "")
+            let gap = CGFloat(Double(gapArg ?? "0") ?? 0)
+            arrangeSlices(orientation: mode, count: n, gap: gap)
+        } else {
+            print("Invalid arrange usage.")
+        }
+    case "layout":
+        let args = Array(CommandLine.arguments.dropFirst(2))
+        guard args.count >= 2 else { print("Usage: mwm layout <save|restore> <name>"); break }
+        if args[0] == "save" { saveLayout(name: args[1]) }
+        else if args[0] == "restore" { restoreLayout(name: args[1]) }
+        else { print("Usage: mwm layout <save|restore> <name>") }
+    case "nudge":
+        let args = Array(CommandLine.arguments.dropFirst(2))
+        guard args.count >= 2, let px = Double(args[1]) else { print("Usage: mwm nudge <left|right|up|down> <px>"); break }
+        switch args[0] {
+        case "left": nudge(dx: CGFloat(-px), dy: 0)
+        case "right": nudge(dx: CGFloat(px), dy: 0)
+        case "up": nudge(dx: 0, dy: CGFloat(px))
+        case "down": nudge(dx: 0, dy: CGFloat(-px))
+        default: print("Usage: mwm nudge <left|right|up|down> <px>")
+        }
+    case "grow":
+        let args = Array(CommandLine.arguments.dropFirst(2))
+        guard args.count >= 2, let px = Double(args[1]) else { print("Usage: mwm grow <width|height> <±px>"); break }
+        switch args[0] {
+        case "width": grow(width: CGFloat(px), height: 0)
+        case "height": grow(width: 0, height: CGFloat(px))
+        default: print("Usage: mwm grow <width|height> <±px>")
+        }
     default:
         if command.starts(with: "center-") {
             positionFrontmostWindow(position: .custom(command), widthSpec: nil, heightSpec: nil)
