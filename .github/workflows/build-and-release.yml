@@ -106,6 +106,10 @@ jobs:
       id: shasum
       run: echo "sha256=$(shasum -a 256 mwm | awk '{ print $1 }')" >> $GITHUB_OUTPUT
     
+    - name: Write SHA256 file
+      run: |
+        echo "${{ steps.shasum.outputs.sha256 }}  mwm" > mwm.sha256
+    
     - name: Release
       id: release
       uses: softprops/action-gh-release@v2
