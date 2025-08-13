@@ -439,6 +439,48 @@ func moveWindowToPreviousDisplay() {
     moveWindowToAdjacentDisplay(forward: false)
 }
 
+func moveWindowToDisplay(index: Int) {
+    guard let frontmostWindow = getFrontmostWindowElement() else {
+        print("Unable to get frontmost window.")
+        return
+    }
+    
+    let screens = NSScreen.screens
+    guard index >= 1 && index <= screens.count else {
+        print("Invalid display index. Must be between 1 and \(screens.count).")
+        return
+    }
+    
+    let targetScreen = screens[index - 1]
+    
+    guard let currentPosition = getWindowPosition(frontmostWindow),
+          let currentSize = getWindowSize(frontmostWindow),
+          let currentScreen = getTargetScreen(for: frontmostWindow) else {
+        print("Unable to get window information.")
+        return
+    }
+    
+    let currentVisibleFrame = currentScreen.visibleFrame
+    let targetVisibleFrame = targetScreen.visibleFrame
+    
+    // Calculate relative position and size
+    let relativeX = (currentPosition.x - currentVisibleFrame.minX) / currentVisibleFrame.width
+    let relativeY = (currentPosition.y - currentVisibleFrame.minY) / currentVisibleFrame.height
+    let relativeWidth = min(1.0, currentSize.width / currentVisibleFrame.width)
+    let relativeHeight = min(1.0, currentSize.height / currentVisibleFrame.height)
+    
+    // Calculate new frame on target screen
+    let newRect = CGRect(
+        x: targetVisibleFrame.minX + relativeX * targetVisibleFrame.width,
+        y: targetVisibleFrame.minY + relativeY * targetVisibleFrame.height,
+        width: relativeWidth * targetVisibleFrame.width,
+        height: relativeHeight * targetVisibleFrame.height
+    )
+    
+    setWindowFrame(frontmostWindow, newRect)
+    print("Moved window to display \(index)")
+}
+
 // Update moveWindowToAdjacentDisplay function
 func moveWindowToAdjacentDisplay(forward: Bool) {
     guard let frontmostWindow = getFrontmostWindowElement(),
@@ -1190,6 +1232,7 @@ func printHelp() {
         grow <width|height> <±px>               Resize window by pixels
 
       Display Movement:
+        display <N>          Move the window to display number N (1-based)
         display-next         Move the window to the next display
         display-previous     Move the window to the previous display
         display-under-mouse  Move window to display under cursor
@@ -1289,6 +1332,12 @@ if CommandLine.arguments.count > 1 {
         performSnapUp()
     case "snap-down":
         performSnapDown()
+    case "display":
+        if CommandLine.arguments.count >= 3, let displayIndex = Int(CommandLine.arguments[2]) {
+            moveWindowToDisplay(index: displayIndex)
+        } else {
+            moveWindowToNextDisplay()
+        }
     case "display-next":
         moveWindowToNextDisplay()
     case "display-previous":
